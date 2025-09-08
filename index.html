@@ -121,11 +121,52 @@
                 <span class="navbar-brand">
                     <i class="bi bi-person-check me-2"></i>لوحة تحكم المعلم
                 </span>
-                <div class="navbar-nav ms-auto">
-                    <span class="navbar-text me-3" id="teacherName">أحمد محمد</span>
-                    <button class="btn btn-outline-light btn-sm" id="teacherLogoutBtn">
-                        <i class="bi bi-box-arrow-right"></i> خروج
-                    </button>
+                
+                <!-- زر القائمة للشاشات الصغيرة -->
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#teacherNavbar">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                
+                <div class="collapse navbar-collapse" id="teacherNavbar">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="teacherHomeLink">
+                                <i class="bi bi-house me-1"></i>الرئيسية
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="teacherScheduleLink" onclick="showTeacherSchedule()">
+                                <i class="bi bi-calendar-week me-1"></i>الجدول الخاص بي
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <div class="navbar-nav">
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="teacherDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-person-circle me-2"></i>
+                                <span id="teacherName">أحمد محمد</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" id="teacherProfileLink">
+                                        <i class="bi bi-person me-2"></i>الملف الشخصي
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="teacherSettingsLink">
+                                        <i class="bi bi-gear me-2"></i>الإعدادات
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="#" id="teacherLogoutBtn">
+                                        <i class="bi bi-box-arrow-right me-2"></i>تسجيل الخروج
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -153,12 +194,21 @@
 
             <!-- الحصص اليوم -->
             <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>حصص اليوم</h5>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0" id="cardTitle"><i class="bi bi-calendar-check me-2"></i>حصص اليوم</h5>
+                    <button class="btn btn-outline-secondary btn-sm" id="backToClassesBtn" style="display: none;" onclick="hideScheduleSection()">
+                        <i class="bi bi-arrow-left me-1"></i>العودة
+                    </button>
                 </div>
                 <div class="card-body">
+                    <!-- محتوى الحصص اليومية -->
                     <div id="classesList" class="row g-3">
                         <!-- سيتم ملؤها بواسطة JavaScript -->
+                    </div>
+                    
+                    <!-- محتوى الجدول الأسبوعي -->
+                    <div id="scheduleContainer" style="display: none;">
+                        <!-- الجدول سيظهر هنا -->
                     </div>
                 </div>
             </div>

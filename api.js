@@ -2,19 +2,39 @@
 class ApiService {
   constructor() {
     this.baseURL = 'http://localhost:8003/api';
+    this.loadToken(); // تحميل التوكن من localStorage
+  }
+
+  // تحميل التوكن من localStorage
+  loadToken() {
     this.token = localStorage.getItem('auth_token');
+    if (this.token) {
+      console.log('تم تحميل التوكن من localStorage:', this.token?.substring(0, 20) + '...');
+    }
   }
 
   // ضبط التوكن
   setToken(token) {
     this.token = token;
     localStorage.setItem('auth_token', token);
+    console.log('تم تعيين التوكن:', token?.substring(0, 20) + '...');
+  }
+
+  // إضافة دالة بديلة لـ setAuthToken
+  setAuthToken(token) {
+    this.setToken(token);
   }
 
   // إزالة التوكن
   removeToken() {
     this.token = null;
     localStorage.removeItem('auth_token');
+    console.log('تم إزالة التوكن');
+  }
+
+  // إضافة دالة بديلة لـ clearAuthToken
+  clearAuthToken() {
+    this.removeToken();
   }
 
   // طلبات HTTP الأساسية
@@ -30,6 +50,9 @@ class ApiService {
     // إضافة التوكن إذا كان متوفراً
     if (this.token) {
       config.headers['Authorization'] = `Bearer ${this.token}`;
+      console.log('إرسال طلب مع التوكن:', this.token?.substring(0, 20) + '...');
+    } else {
+      console.warn('لا يوجد توكن - سيتم إرسال طلب بدون مصادقة');
     }
 
     // إضافة البيانات للطلبات POST/PUT/PATCH
@@ -97,6 +120,11 @@ class ApiService {
 
   async getMe() {
     return this.get('/auth/me');
+  }
+
+  // إضافة alias للتوافق
+  async me() {
+    return this.getMe();
   }
 
   // === إدارة المعلمين ===
@@ -178,13 +206,48 @@ class ApiService {
     return this.get('/teacher/my-classes');
   }
 
-  async getClassStudents(classId) {
-    return this.get(`/teacher/classes/${classId}/students`);
+  async getClassStudents(sessionId) {
+    return this.get(`/teacher/sessions/${sessionId}/students`);
+  }
+
+  // === حصص المعلم (جديد) ===
+  async getTeacherSessions(teacherId = null) {
+    if (teacherId) {
+      return this.get(`/admin/teachers/${teacherId}/sessions`);
+    }
+    return this.get('/teacher/sessions');
+  }
+
+  async getCurrentSession() {
+    return this.get('/teacher/current-session');
+  }
+
+  async getSessionStudents(sessionId) {
+    return this.get(`/teacher/sessions/${sessionId}/students`);
+  }
+
+  async saveSessionAttendance(sessionId, attendanceData) {
+    return this.post(`/teacher/sessions/${sessionId}/attendance`, {
+      attendance: attendanceData,
+      date: new Date().toISOString().split('T')[0]
+    });
+  }
+
+  async getTeacherDashboardStats() {
+    return this.get('/teacher/dashboard-stats');
   }
 
   // === الحضور والغياب ===
   async saveAttendance(classId, attendanceData) {
     return this.post(`/teacher/classes/${classId}/attendance`, {
+      attendance: attendanceData,
+      date: new Date().toISOString().split('T')[0]
+    });
+  }
+
+  // الطريقة الجديدة للحضور
+  async saveSessionAttendance(sessionId, attendanceData) {
+    return this.post(`/teacher/sessions/${sessionId}/attendance`, {
       attendance: attendanceData,
       date: new Date().toISOString().split('T')[0]
     });

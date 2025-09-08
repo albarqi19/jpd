@@ -95,17 +95,40 @@ let currentClass = null;
 let attendanceData = {};
 
 // تهيئة التطبيق
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   console.log('تطبيق محمل بنجاح');
-  initializeApp();
+  await initializeApp();
   setupEventListeners();
   updateDateTime();
   setInterval(updateDateTime, 60000); // تحديث كل دقيقة
 });
 
 // تهيئة التطبيق
-function initializeApp() {
-  showPage('homePage');
+async function initializeApp() {
+  // استرجاع حالة المستخدم من localStorage
+  const sessionRestored = await restoreUserSession();
+  
+  // إذا كان المستخدم مسجل دخول، اذهب لوحة التحكم المناسبة
+  if (sessionRestored && currentUser) {
+    console.log('تم استرجاع الجلسة، توجيه المستخدم للوحة التحكم...');
+    
+    if (currentUser.role === 'teacher') {
+      showPage('teacherDashboard');
+      // تأخير صغير للتأكد من تحميل الصفحة
+      setTimeout(() => {
+        loadTeacherDashboard();
+      }, 200);
+    } else if (currentUser.role === 'admin') {
+      showPage('adminDashboard');
+      // تأخير صغير للتأكد من تحميل الصفحة
+      setTimeout(() => {
+        loadAdminDashboard();
+      }, 200);
+    }
+  } else {
+    console.log('لا توجد جلسة صالحة، عرض الصفحة الرئيسية');
+    showPage('homePage');
+  }
   
   // إعداد حالة الحضور الافتراضية للطلاب
   appData.students.forEach(student => {
@@ -228,6 +251,12 @@ function setupEventListeners() {
   if (changePasswordForm) {
     changePasswordForm.addEventListener('submit', changePassword);
   }
+
+  // نموذج إضافة صف
+  const addGradeForm = document.getElementById('addGradeForm');
+  if (addGradeForm) {
+    addGradeForm.addEventListener('submit', handleAddGrade);
+  }
 }
 
 // عرض الصفحة المحددة
@@ -261,6 +290,78 @@ function showPage(pageId) {
   }
 }
 
+// استرجاع حالة المستخدم من التخزين المحلي
+async function restoreUserSession() {
+  try {
+    // استرجاع التوكن
+    const token = localStorage.getItem('auth_token');
+    const userData = localStorage.getItem('user_data');
+    
+    if (token && userData) {
+      console.log('العثور على توكن محفوظ:', token?.substring(0, 20) + '...');
+      
+      // تعيين التوكن في apiService
+      apiService.setAuthToken(token);
+      
+      // التحقق من أن التوكن تم تعيينه بنجاح
+      console.log('التوكن في apiService بعد التعيين:', apiService.token?.substring(0, 20) + '...');
+      
+      // استرجاع بيانات المستخدم
+      currentUser = JSON.parse(userData);
+      console.log('بيانات المستخدم المسترجعة:', currentUser);
+      
+      // التحقق من صلاحية التوكن من خلال استدعاء API
+      try {
+        console.log('التحقق من صلاحية التوكن...');
+        const response = await apiService.me();
+        if (response.success) {
+          // تحديث بيانات المستخدم إذا كانت مختلفة
+          currentUser = response.data;
+          saveUserSession(token, currentUser);
+          console.log('تم استرجاع جلسة المستخدم بنجاح:', currentUser);
+          return true;
+        }
+      } catch (error) {
+        console.log('التوكن غير صالح، سيتم مسح الجلسة:', error.message);
+        clearUserSession();
+        return false;
+      }
+    } else {
+      console.log('لا توجد جلسة محفوظة');
+      return false;
+    }
+  } catch (error) {
+    console.error('خطأ في استرجاع الجلسة:', error);
+    // مسح البيانات التالفة
+    clearUserSession();
+    return false;
+  }
+}
+
+// حفظ حالة المستخدم في التخزين المحلي
+function saveUserSession(token, userData) {
+  try {
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('user_data', JSON.stringify(userData));
+    console.log('تم حفظ جلسة المستخدم');
+  } catch (error) {
+    console.error('خطأ في حفظ الجلسة:', error);
+  }
+}
+
+// مسح حالة المستخدم من التخزين المحلي
+function clearUserSession() {
+  try {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+    apiService.clearAuthToken();
+    currentUser = null;
+    console.log('تم مسح جلسة المستخدم');
+  } catch (error) {
+    console.error('خطأ في مسح الجلسة:', error);
+  }
+}
+
 // تسجيل دخول المعلم
 async function handleTeacherLogin() {
   console.log('محاولة تسجيل دخول المعلم');
@@ -286,6 +387,12 @@ async function handleTeacherLogin() {
     
     if (result.success) {
       currentUser = result.data.user;
+      const token = result.data.access_token;
+      
+      // حفظ الجلسة
+      apiService.setToken(token);
+      saveUserSession(token, currentUser);
+      
       showNotification('تم تسجيل الدخول بنجاح', 'success');
       
       // التحقق من الحاجة لتغيير كلمة المرور
@@ -331,6 +438,12 @@ async function handleAdminLogin() {
     
     if (result.success) {
       currentUser = result.data.user;
+      const token = result.data.access_token;
+      
+      // حفظ الجلسة
+      apiService.setToken(token);
+      saveUserSession(token, currentUser);
+      
       showNotification('تم تسجيل الدخول بنجاح', 'success');
       setTimeout(() => {
         showPage('adminDashboard');
@@ -345,11 +458,17 @@ async function handleAdminLogin() {
 }
 
 // تحميل لوحة تحكم المعلم
-// تحميل لوحة تحكم المعلم
 async function loadTeacherDashboard() {
   if (!currentUser) return;
   
   console.log('تحميل لوحة تحكم المعلم');
+  updateDateTime(); // تحديث الوقت فوراً
+  
+  // تأكد من وجود التوكن
+  if (!apiService.token) {
+    console.log('لا يوجد توكن، محاولة إعادة تحميل...');
+    apiService.loadToken();
+  }
   
   // عرض اسم المعلم
   const teacherNameEl = document.getElementById('teacherName');
@@ -374,45 +493,86 @@ async function loadTeacherDashboard() {
 
     // تحميل حصص المعلم من API
     const sessionsResult = await apiService.getTeacherSessions();
-    const sessions = sessionsResult.data || [];
+    const allSessions = sessionsResult.data || [];
+    
+    // تصفية الحصص لليوم الحالي فقط
+    const currentDay = sessionsResult.current_day;
+    const todaySessions = allSessions.filter(session => session.is_today);
     
     classesList.innerHTML = '';
     
-    if (sessions.length === 0) {
-      classesList.innerHTML = `
+    // عرض معلومات اليوم الحالي
+    const dayInfo = document.createElement('div');
+    dayInfo.className = 'col-12 mb-3';
+    dayInfo.innerHTML = `
+      <div class="alert alert-info">
+        <i class="bi bi-calendar-day me-2"></i>
+        <strong>اليوم: ${currentDay}</strong>
+        <small class="ms-2">(${sessionsResult.saudi_time ? new Date(sessionsResult.saudi_time).toLocaleDateString('ar-SA') : ''})</small>
+        <br>
+        <small>عدد الحصص اليوم: ${todaySessions.length}</small>
+      </div>
+    `;
+    classesList.appendChild(dayInfo);
+    
+    if (todaySessions.length === 0) {
+      classesList.innerHTML += `
         <div class="col-12 text-center py-5">
-          <i class="bi bi-journal-x display-4 text-muted"></i>
-          <p class="mt-3 text-muted">لا توجد حصص مخصصة لك حالياً</p>
+          <i class="bi bi-calendar-x display-4 text-muted"></i>
+          <p class="mt-3 text-muted">لا توجد حصص لك اليوم (${currentDay})</p>
+          <small class="text-muted">يمكنك مراجعة جدولك الأسبوعي مع الإدارة</small>
         </div>
       `;
       return;
     }
     
-    sessions.forEach(session => {
+    todaySessions.forEach(session => {
       const classCard = document.createElement('div');
       classCard.className = `col-12 col-md-6`;
       
-      // تحديد ما إذا كانت الحصة الحالية
+      // تنسيق الوقت بنظام 12 ساعة
+      const startTime = session.formatted_start_time || formatTo12Hour(session.start_time?.slice(0, 5)) || 'غير محدد';
+      const endTime = session.formatted_end_time || formatTo12Hour(session.end_time?.slice(0, 5)) || 'غير محدد';
+      
+      // تحديد حالة الحصة
       const isCurrent = session.is_current || false;
+      const isPast = session.is_past || false;
+      const isFuture = !isCurrent && !isPast;
+      
+      // تحديد الأيقونة والألوان حسب حالة الحصة
+      let statusIcon, statusClass, statusTitle;
+      if (isCurrent) {
+        statusIcon = 'bi-play-circle-fill text-success';
+        statusClass = 'current';
+        statusTitle = 'الحصة الحالية - يمكن بدء التحضير';
+      } else if (isPast) {
+        statusIcon = 'bi-check-circle-fill text-secondary';
+        statusClass = 'past';
+        statusTitle = 'انتهت هذه الحصة';
+      } else {
+        statusIcon = 'bi-clock text-muted';
+        statusClass = 'future';
+        statusTitle = 'لم يحن وقت هذه الحصة بعد';
+      }
       
       classCard.innerHTML = `
-        <div class="class-card ${isCurrent ? 'current' : ''}" data-session-id="${session.id}">
+        <div class="class-card ${statusClass}" data-session-id="${session.id}">
           <div class="row align-items-center">
             <div class="col">
               <h5 class="mb-1">${session.subject?.name || 'غير محدد'}</h5>
               <p class="mb-1 text-muted">${session.grade} - ${session.class_name}</p>
               <small class="text-muted">
                 <i class="bi bi-clock me-1"></i>
-                ${session.start_time} - ${session.end_time}
+                ${startTime} - ${endTime}
                 <br>
-                <i class="bi bi-calendar3 me-1"></i>${session.day}
+                <i class="bi bi-journal-bookmark me-1"></i>الحصة رقم ${session.period_number || 'غير محدد'}
+                ${isCurrent ? '<br><i class="bi bi-circle-fill text-success me-1" style="font-size: 0.5rem;"></i><strong class="text-success">جارية الآن</strong>' : ''}
+                ${isPast ? '<br><i class="bi bi-check-circle me-1 text-secondary"></i><span class="text-secondary">انتهت</span>' : ''}
+                ${isFuture ? '<br><i class="bi bi-hourglass me-1 text-warning"></i><span class="text-warning">قادمة</span>' : ''}
               </small>
             </div>
             <div class="col-auto">
-              ${isCurrent ? 
-                '<i class="bi bi-play-circle text-success" style="font-size: 2rem;" title="الحصة الحالية"></i>' : 
-                '<i class="bi bi-clock text-muted" style="font-size: 2rem;"></i>'
-              }
+              <i class="bi ${statusIcon}" style="font-size: 2rem;" title="${statusTitle}"></i>
             </div>
           </div>
         </div>
@@ -421,7 +581,14 @@ async function loadTeacherDashboard() {
       // إضافة مستمع الأحداث
       const cardElement = classCard.querySelector('.class-card');
       cardElement.addEventListener('click', function() {
-        startAttendance(session.id, session);
+        // فقط السماح بالنقر على الحصص الحالية أو التي يمكن أخذ الحضور فيها
+        if (isCurrent || session.can_take_attendance) {
+          startAttendance(session.id, session);
+        } else if (isPast) {
+          showNotification('هذه الحصة قد انتهت بالفعل', 'warning');
+        } else {
+          showNotification('لم يحن وقت هذه الحصة بعد', 'warning');
+        }
       });
       
       classesList.appendChild(classCard);
@@ -457,11 +624,16 @@ async function startAttendance(sessionId, sessionData = null) {
       return;
     }
     
-    // التحقق من وقت الحصة (يمكن تخطي هذا للاختبار)
-    /*if (!sessionData.is_current) {
-      showNotification('لم يحن وقت هذه الحصة بعد', 'warning');
+    // التحقق من وقت الحصة
+    if (!sessionData.is_current && !sessionData.can_take_attendance) {
+      // التحقق من نوع الحالة
+      if (sessionData.is_past) {
+        showNotification('هذه الحصة قد انتهت بالفعل', 'warning');
+      } else {
+        showNotification('لم يحن وقت هذه الحصة بعد', 'warning');
+      }
       return;
-    }*/
+    }
     
     currentClass = sessionData;
     showPage('attendancePage');
@@ -485,7 +657,11 @@ async function loadAttendancePage() {
   
   if (subjectEl) subjectEl.textContent = currentClass.subject?.name || 'غير محدد';
   if (classEl) classEl.textContent = `${currentClass.grade} - ${currentClass.class_name}`;
-  if (timeEl) timeEl.textContent = `${currentClass.start_time} - ${currentClass.end_time} (${currentClass.day})`;
+  if (timeEl) {
+    const startTime = currentClass.formatted_start_time || formatTo12Hour(currentClass.start_time);
+    const endTime = currentClass.formatted_end_time || formatTo12Hour(currentClass.end_time);
+    timeEl.textContent = `${startTime} - ${endTime}`;
+  }
   
   // عرض قائمة الطلاب
   const studentsList = document.getElementById('studentsList');
@@ -503,7 +679,7 @@ async function loadAttendancePage() {
     `;
 
     // تحميل طلاب الفصل
-    const studentsResult = await apiService.getClassStudents(currentClass.grade, currentClass.class_name);
+    const studentsResult = await apiService.getClassStudents(currentClass.id);
     const students = studentsResult.data || [];
     
     studentsList.innerHTML = '';
@@ -690,9 +866,19 @@ async function saveAttendance() {
 }
 
 // تحميل لوحة تحكم الإدارة
-function loadAdminDashboard() {
+async function loadAdminDashboard() {
   console.log('تحميل لوحة تحكم الإدارة');
-  showAdminSection('overview');
+  
+  // تأكد من وجود التوكن
+  if (!apiService.token) {
+    console.log('لا يوجد توكن، محاولة إعادة تحميل...');
+    apiService.loadToken();
+  }
+  
+  // انتظار قصير للتأكد من اكتمال تعيين التوكن
+  setTimeout(() => {
+    showAdminSection('overview');
+  }, 100);
 }
 
 // عرض قسم إداري محدد
@@ -1607,20 +1793,216 @@ async function getStudentsContent() {
 // محتوى إدارة الفصول
 async function getGradesContent() {
   console.log('getGradesContent called');
-  // سيتم جلب الصفوف والفصول من API لاحقاً
-  return `
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-list-ol me-2"></i>إدارة الفصول</h5>
-        <button class="btn btn-primary btn-sm" onclick="showAddGradeModal()">
-          <i class="bi bi-plus"></i> إضافة صف
-        </button>
+  try {
+    const result = await apiService.getClassSessions();
+    let classSessionsHtml = '';
+    
+    if (result.success && result.data.length > 0) {
+      // تجميع الحصص حسب الصف والشعبة
+      const gradeMap = {};
+      result.data.forEach(session => {
+        const gradeKey = `${session.grade} - ${session.class_name}`;
+        if (!gradeMap[gradeKey]) {
+          gradeMap[gradeKey] = [];
+        }
+        gradeMap[gradeKey].push(session);
+      });
+
+      Object.keys(gradeMap).forEach(gradeKey => {
+        const sessions = gradeMap[gradeKey];
+        const sessionsHtml = sessions.map(session => `
+          <div class="col-md-6 mb-2">
+            <div class="card h-100">
+              <div class="card-body p-3">
+                <h6 class="card-title mb-2">${session.subject.name}</h6>
+                <p class="card-text small mb-1">
+                  <i class="bi bi-person me-1"></i>${session.teacher.name}
+                </p>
+                <p class="card-text small mb-1">
+                  <i class="bi bi-calendar me-1"></i>${session.day}
+                </p>
+                <p class="card-text small mb-2">
+                  <i class="bi bi-clock me-1"></i>${session.start_time} - ${session.end_time}
+                </p>
+                <div class="btn-group btn-group-sm w-100">
+                  <button class="btn btn-outline-primary btn-sm" onclick="editClassSession(${session.id})" title="تعديل">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-outline-danger btn-sm" onclick="deleteClassSession(${session.id})" title="حذف">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('');
+
+        classSessionsHtml += `
+          <div class="card mb-3">
+            <div class="card-header bg-light">
+              <h6 class="mb-0">${gradeKey}</h6>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                ${sessionsHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      classSessionsHtml = `
+        <div class="alert alert-info text-center">
+          <i class="bi bi-calendar-x display-4 d-block mb-2"></i>
+          <p class="mb-0">لا توجد حصص مسجلة حالياً</p>
+          <p class="small text-muted">انقر على "إضافة صف" لبدء إضافة الحصص</p>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="bi bi-list-ol me-2"></i>إدارة الفصول</h5>
+          <button class="btn btn-primary btn-sm" onclick="showAddGradeModal()">
+            <i class="bi bi-plus"></i> إضافة صف
+          </button>
+        </div>
+        <div class="card-body">
+          ${classSessionsHtml}
+        </div>
       </div>
-      <div class="card-body">
-        <div class="alert alert-info">سيتم عرض الصفوف والفصول هنا بعد الإعداد.</div>
+    `;
+  } catch (error) {
+    return `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ أثناء تحميل الفصول: ${error.message}
       </div>
-    </div>
-  `;
+    `;
+  }
+}
+
+// محتوى إدارة الحصص
+async function getClassesContent() {
+  console.log('getClassesContent called');
+  try {
+    const result = await apiService.getClassSessions();
+    let classSessionsHtml = '';
+    
+    if (result.success && result.data.length > 0) {
+      // تجميع الحصص حسب اليوم
+      const dayMap = {
+        'الأحد': [],
+        'الإثنين': [],
+        'الثلاثاء': [],
+        'الأربعاء': [],
+        'الخميس': []
+      };
+      
+      result.data.forEach(session => {
+        if (dayMap[session.day]) {
+          dayMap[session.day].push(session);
+        }
+      });
+
+      Object.keys(dayMap).forEach(day => {
+        const sessions = dayMap[day];
+        if (sessions.length > 0) {
+          // ترتيب الحصص حسب وقت البداية
+          sessions.sort((a, b) => a.start_time.localeCompare(b.start_time));
+          
+          const sessionsHtml = sessions.map(session => `
+            <tr>
+              <td>${session.period_number}</td>
+              <td>${session.start_time} - ${session.end_time}</td>
+              <td>${session.subject.name}</td>
+              <td>${session.teacher.name}</td>
+              <td>${session.grade} - ${session.class_name}</td>
+              <td>
+                <span class="badge ${session.status === 'active' ? 'bg-success' : 'bg-secondary'}">
+                  ${session.status === 'active' ? 'نشطة' : 'غير نشطة'}
+                </span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editClassSession(${session.id})" title="تعديل">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteClassSession(${session.id})" title="حذف">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+          `).join('');
+
+          classSessionsHtml += `
+            <div class="card mb-3">
+              <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                  <i class="bi bi-calendar-day me-2"></i>${day}
+                  <span class="badge bg-light text-dark ms-2">${sessions.length} حصة</span>
+                </h6>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th width="80">الحصة</th>
+                        <th width="140">التوقيت</th>
+                        <th>المادة</th>
+                        <th>المعلم</th>
+                        <th>الصف</th>
+                        <th width="80">الحالة</th>
+                        <th width="120">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${sessionsHtml}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      });
+    } else {
+      classSessionsHtml = `
+        <div class="alert alert-info text-center">
+          <i class="bi bi-calendar-x display-4 d-block mb-2"></i>
+          <p class="mb-0">لا توجد حصص مسجلة حالياً</p>
+          <p class="small text-muted">يمكنك إضافة الحصص من قسم "إدارة الفصول"</p>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>إدارة الحصص</h5>
+          <div>
+            <button class="btn btn-outline-primary btn-sm me-2" onclick="showClassScheduleView()">
+              <i class="bi bi-table"></i> عرض الجدول
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="showAddClassSessionDirectModal()">
+              <i class="bi bi-plus"></i> إضافة حصة
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          ${classSessionsHtml}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    return `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ أثناء تحميل الحصص: ${error.message}
+      </div>
+    `;
+  }
 }
 
 // محتوى إدارة المواد
@@ -1845,6 +2227,7 @@ async function logout() {
     console.error('خطأ في تسجيل الخروج:', error);
   } finally {
     // تنظيف البيانات المحلية
+    clearUserSession(); // مسح الجلسة من localStorage
     currentUser = null;
     currentClass = null;
     attendanceData = {};
@@ -1873,7 +2256,7 @@ function updateDateTime() {
   const currentTime = now.toLocaleTimeString('ar-SA', { 
     hour: '2-digit', 
     minute: '2-digit',
-    hour12: false 
+    hour12: true 
   });
   
   // تحديث العناصر إذا كانت موجودة
@@ -1884,6 +2267,17 @@ function updateDateTime() {
   if (dayElement) dayElement.textContent = currentDay;
   if (dateElement) dateElement.textContent = currentDate;
   if (timeElement) timeElement.textContent = currentTime;
+}
+
+// دالة تحويل الوقت إلى نظام 12 ساعة
+function formatTo12Hour(time24) {
+  if (!time24) return '';
+  
+  const [hours, minutes] = time24.split(':').map(Number);
+  const period = hours >= 12 ? 'م' : 'ص';
+  const hours12 = hours % 12 || 12;
+  
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
 // عرض التنبيهات
@@ -2075,10 +2469,10 @@ async function loadTeacherSessions(teacherId) {
   }
 }
 
-// دالة تحميل الطلاب للفصل
-async function loadClassStudents(grade, className) {
+// دالة تحميل الطلاب للفصل (للاستخدام في الإدارة)
+async function loadClassStudents(sessionId) {
   try {
-    const students = await apiService.getClassStudents(grade, className);
+    const students = await apiService.getClassStudents(sessionId);
     return students.data || [];
   } catch (error) {
     console.error('خطأ في تحميل الطلاب:', error);
@@ -2469,6 +2863,441 @@ function showAddClassModal() {
   modal.show();
 }
 
+// دالة لتحديث الفصول بعد إضافة فصل جديد
+async function refreshGradesContent() {
+  const adminContent = document.getElementById('adminContent');
+  if (adminContent) {
+    try {
+      adminContent.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+      const content = await getGradesContent();
+      adminContent.innerHTML = content;
+    } catch (error) {
+      adminContent.innerHTML = `<div class="alert alert-danger">حدث خطأ في تحديث الفصول: ${error.message}</div>`;
+    }
+  }
+}
+
+// دالة لتعديل حصة
+async function editClassSession(sessionId) {
+  try {
+    // سيتم تنفيذها لاحقاً
+    showAlert('ميزة التعديل ستكون متاحة قريباً', 'info');
+  } catch (error) {
+    showAlert('حدث خطأ في تعديل الحصة: ' + error.message, 'danger');
+  }
+}
+
+// دالة لحذف حصة
+async function deleteClassSession(sessionId) {
+  if (confirm('هل أنت متأكد من حذف هذه الحصة؟')) {
+    try {
+      const result = await apiService.deleteClassSession(sessionId);
+      if (result.success) {
+        showAlert('تم حذف الحصة بنجاح', 'success');
+        await refreshGradesContent();
+      } else {
+        showAlert('حدث خطأ في حذف الحصة: ' + result.message, 'danger');
+      }
+    } catch (error) {
+      showAlert('حدث خطأ في حذف الحصة: ' + error.message, 'danger');
+    }
+  }
+}
+
+// دالة لإضافة حصة للصف
+async function addClassSession(gradeData) {
+  try {
+    // حفظ بيانات الصف مؤقتاً لإضافة الحصص
+    window.tempGradeData = gradeData;
+    
+    // إنشاء أسماء الفصول بناءً على عدد الفصول المطلوب
+    const classNames = [];
+    const sections = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط', 'ي', 'ك', 'ل', 'م', 'ن', 'س', 'ع', 'ف', 'ص', 'ق', 'ر'];
+    
+    for (let i = 0; i < gradeData.sections; i++) {
+      const sectionName = sections[i] || (i + 1).toString();
+      classNames.push(sectionName);
+    }
+    
+    // عرض مودال إضافة الحصص مع قائمة الفصول
+    showAddMultipleClassSessionsModal(gradeData.gradeName, classNames);
+  } catch (error) {
+    showAlert('حدث خطأ: ' + error.message, 'danger');
+  }
+}
+
+// دالة لعرض مودال إضافة حصص متعددة للصف
+function showAddMultipleClassSessionsModal(gradeName, classNames) {
+  const classNamesHtml = classNames.map(className => `
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" value="${className}" id="class_${className}" checked>
+      <label class="form-check-label" for="class_${className}">
+        ${gradeName} - ${className}
+      </label>
+    </div>
+  `).join('');
+
+  const modalHtml = `
+    <div class="modal fade" id="addMultipleClassSessionsModal" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">إضافة حصص للصف: ${gradeName}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-4">
+                <h6>الفصول المتاحة:</h6>
+                <div class="border p-3 mb-3" style="max-height: 200px; overflow-y: auto;">
+                  ${classNamesHtml}
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">المعلم</label>
+                  <select class="form-control" id="multiSessionTeacher" required>
+                    <option value="">اختر المعلم</option>
+                  </select>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">المادة</label>
+                  <select class="form-control" id="multiSessionSubject" required>
+                    <option value="">اختر المادة</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="col-md-8">
+                <h6>تفاصيل الحصة:</h6>
+                <form id="addMultipleClassSessionsForm">
+                  <div class="row">
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label">اليوم</label>
+                      <select class="form-control" id="multiSessionDay" required>
+                        <option value="">اختر اليوم</option>
+                        <option value="الأحد">الأحد</option>
+                        <option value="الإثنين">الإثنين</option>
+                        <option value="الثلاثاء">الثلاثاء</option>
+                        <option value="الأربعاء">الأربعاء</option>
+                        <option value="الخميس">الخميس</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label">وقت البداية</label>
+                      <input type="time" class="form-control" id="multiSessionStartTime" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label">وقت النهاية</label>
+                      <input type="time" class="form-control" id="multiSessionEndTime" required>
+                    </div>
+                  </div>
+                  
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label class="form-label">رقم الحصة</label>
+                      <input type="number" class="form-control" id="multiSessionPeriod" min="1" max="8" required>
+                    </div>
+                  </div>
+                  
+                  <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    سيتم إضافة حصة واحدة لكل فصل محدد بنفس التفاصيل أعلاه
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="button" class="btn btn-primary" onclick="handleAddMultipleClassSessions('${gradeName}')">إضافة الحصص</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة المودال القديم إذا كان موجوداً
+  const oldModal = document.getElementById('addMultipleClassSessionsModal');
+  if (oldModal) {
+    oldModal.remove();
+  }
+  
+  // إضافة المودال الجديد
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // تحميل بيانات المعلمين والمواد
+  loadMultipleTeachersAndSubjects();
+  
+  // عرض المودال
+  const modal = new bootstrap.Modal(document.getElementById('addMultipleClassSessionsModal'));
+  modal.show();
+}
+
+// دالة لتحميل المعلمين والمواد في المودال المتعدد
+async function loadMultipleTeachersAndSubjects() {
+  try {
+    // تحميل المعلمين
+    const teachersResult = await apiService.getTeachers();
+    const teacherSelect = document.getElementById('multiSessionTeacher');
+    if (teachersResult.success && teachersResult.data) {
+      teachersResult.data.forEach(teacher => {
+        const option = document.createElement('option');
+        option.value = teacher.id;
+        option.textContent = teacher.name;
+        teacherSelect.appendChild(option);
+      });
+    }
+    
+    // تحميل المواد
+    const subjectsResult = await apiService.getSubjects();
+    const subjectSelect = document.getElementById('multiSessionSubject');
+    if (subjectsResult.success && subjectsResult.data) {
+      subjectsResult.data.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = subject.name;
+        subjectSelect.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Error loading teachers and subjects:', error);
+  }
+}
+
+// دالة للتعامل مع إضافة حصص متعددة
+async function handleAddMultipleClassSessions(gradeName) {
+  // جمع الفصول المحددة
+  const selectedClasses = [];
+  const checkboxes = document.querySelectorAll('#addMultipleClassSessionsModal input[type="checkbox"]:checked');
+  checkboxes.forEach(checkbox => {
+    selectedClasses.push(checkbox.value);
+  });
+  
+  if (selectedClasses.length === 0) {
+    showAlert('يرجى اختيار فصل واحد على الأقل', 'warning');
+    return;
+  }
+  
+  const formData = {
+    teacher_id: document.getElementById('multiSessionTeacher').value,
+    subject_id: document.getElementById('multiSessionSubject').value,
+    grade: gradeName,
+    day: document.getElementById('multiSessionDay').value,
+    start_time: document.getElementById('multiSessionStartTime').value,
+    end_time: document.getElementById('multiSessionEndTime').value,
+    period_number: parseInt(document.getElementById('multiSessionPeriod').value)
+  };
+  
+  // التحقق من أن جميع الحقول مملوءة
+  if (!formData.teacher_id || !formData.subject_id || !formData.day || !formData.start_time || !formData.end_time || !formData.period_number) {
+    showAlert('يرجى ملء جميع الحقول المطلوبة', 'warning');
+    return;
+  }
+  
+  try {
+    let successCount = 0;
+    let errorCount = 0;
+    
+    // إضافة حصة لكل فصل محدد
+    for (const className of selectedClasses) {
+      const sessionData = {
+        ...formData,
+        class_name: className
+      };
+      
+      try {
+        const result = await apiService.createClassSession(sessionData);
+        if (result.success) {
+          successCount++;
+        } else {
+          errorCount++;
+          console.error(`فشل في إضافة حصة للفصل ${className}:`, result.message);
+        }
+      } catch (error) {
+        errorCount++;
+        console.error(`خطأ في إضافة حصة للفصل ${className}:`, error);
+      }
+    }
+    
+    // إغلاق المودال
+    const modal = bootstrap.Modal.getInstance(document.getElementById('addMultipleClassSessionsModal'));
+    modal.hide();
+    
+    // عرض النتيجة
+    if (successCount > 0) {
+      showAlert(`تم إضافة ${successCount} حصة بنجاح` + (errorCount > 0 ? ` (فشل ${errorCount})` : ''), successCount > errorCount ? 'success' : 'warning');
+      await refreshGradesContent();
+    } else {
+      showAlert('فشل في إضافة الحصص', 'danger');
+    }
+  } catch (error) {
+    showAlert('حدث خطأ في إضافة الحصص: ' + error.message, 'danger');
+  }
+}
+
+// دالة لعرض مودال إضافة حصة للصف
+function showAddClassSessionModal() {
+  // إنشاء مودال ديناميكي لإضافة الحصص
+  const modalHtml = `
+    <div class="modal fade" id="addClassSessionModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">إضافة حصص للصف</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="addClassSessionForm">
+            <div class="modal-body">
+              <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                سيتم إضافة الحصص للصف: <strong>${window.tempGradeData?.gradeName}</strong>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">المعلم</label>
+                  <select class="form-control" id="sessionTeacher" required>
+                    <option value="">اختر المعلم</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">المادة</label>
+                  <select class="form-control" id="sessionSubject" required>
+                    <option value="">اختر المادة</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">اليوم</label>
+                  <select class="form-control" id="sessionDay" required>
+                    <option value="">اختر اليوم</option>
+                    <option value="الأحد">الأحد</option>
+                    <option value="الإثنين">الإثنين</option>
+                    <option value="الثلاثاء">الثلاثاء</option>
+                    <option value="الأربعاء">الأربعاء</option>
+                    <option value="الخميس">الخميس</option>
+                  </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">وقت البداية</label>
+                  <input type="time" class="form-control" id="sessionStartTime" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">وقت النهاية</label>
+                  <input type="time" class="form-control" id="sessionEndTime" required>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">رقم الحصة</label>
+                  <input type="number" class="form-control" id="sessionPeriod" min="1" max="8" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">الشعبة</label>
+                  <input type="text" class="form-control" id="sessionClassName" placeholder="مثال: أ" required>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+              <button type="submit" class="btn btn-primary">إضافة الحصة</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة المودال القديم إذا كان موجوداً
+  const oldModal = document.getElementById('addClassSessionModal');
+  if (oldModal) {
+    oldModal.remove();
+  }
+  
+  // إضافة المودال الجديد
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // تحميل بيانات المعلمين والمواد
+  loadTeachersAndSubjects();
+  
+  // عرض المودال
+  const modal = new bootstrap.Modal(document.getElementById('addClassSessionModal'));
+  modal.show();
+  
+  // إضافة مستمع للنموذج
+  document.getElementById('addClassSessionForm').addEventListener('submit', handleAddClassSession);
+}
+
+// دالة لتحميل المعلمين والمواد في القائمة
+async function loadTeachersAndSubjects() {
+  try {
+    // تحميل المعلمين
+    const teachersResult = await apiService.getTeachers();
+    const teacherSelect = document.getElementById('sessionTeacher');
+    if (teachersResult.success && teachersResult.data) {
+      teachersResult.data.forEach(teacher => {
+        const option = document.createElement('option');
+        option.value = teacher.id;
+        option.textContent = teacher.name;
+        teacherSelect.appendChild(option);
+      });
+    }
+    
+    // تحميل المواد
+    const subjectsResult = await apiService.getSubjects();
+    const subjectSelect = document.getElementById('sessionSubject');
+    if (subjectsResult.success && subjectsResult.data) {
+      subjectsResult.data.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = subject.name;
+        subjectSelect.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Error loading teachers and subjects:', error);
+  }
+}
+
+// دالة للتعامل مع إضافة حصة جديدة
+async function handleAddClassSession(event) {
+  event.preventDefault();
+  
+  const formData = {
+    teacher_id: document.getElementById('sessionTeacher').value,
+    subject_id: document.getElementById('sessionSubject').value,
+    grade: window.tempGradeData?.gradeName || 'غير محدد',
+    class_name: document.getElementById('sessionClassName').value,
+    day: document.getElementById('sessionDay').value,
+    start_time: document.getElementById('sessionStartTime').value,
+    end_time: document.getElementById('sessionEndTime').value,
+    period_number: parseInt(document.getElementById('sessionPeriod').value)
+  };
+  
+  try {
+    const result = await apiService.createClassSession(formData);
+    
+    if (result.success) {
+      showAlert('تم إضافة الحصة بنجاح', 'success');
+      
+      // إغلاق المودال
+      const modal = bootstrap.Modal.getInstance(document.getElementById('addClassSessionModal'));
+      modal.hide();
+      
+      // تحديث محتوى الفصول
+      await refreshGradesContent();
+    } else {
+      showAlert('حدث خطأ في إضافة الحصة: ' + result.message, 'danger');
+    }
+  } catch (error) {
+    showAlert('حدث خطأ في إضافة الحصة: ' + error.message, 'danger');
+  }
+}
+
 // دالة لعرض مودال إضافة مادة
 function showAddSubjectModal() {
   const modal = new bootstrap.Modal(document.getElementById('addSubjectModal'));
@@ -2541,4 +3370,367 @@ function showAddGradeModal() {
   } else {
     console.error('Modal element not found');
   }
+}
+
+// دالة للتعامل مع إضافة صف جديد
+async function handleAddGrade(event) {
+  event.preventDefault();
+  
+  const gradeName = document.getElementById('gradeName').value;
+  const gradeSections = parseInt(document.getElementById('gradeSections').value);
+  
+  if (!gradeName || !gradeSections) {
+    showAlert('يرجى ملء جميع الحقول المطلوبة', 'warning');
+    return;
+  }
+  
+  // إغلاق مودال إضافة الصف
+  const modal = bootstrap.Modal.getInstance(document.getElementById('addGradeModal'));
+  modal.hide();
+  
+  // إضافة الحصص للصف
+  const gradeData = {
+    gradeName: gradeName,
+    sections: gradeSections
+  };
+  
+  await addClassSession(gradeData);
+}
+
+// دالة لعرض مودال إضافة حصة مباشرة (من قسم إدارة الحصص)
+function showAddClassSessionDirectModal() {
+  // إنشاء مودال ديناميكي لإضافة حصة مباشرة
+  const modalHtml = `
+    <div class="modal fade" id="addClassSessionDirectModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">إضافة حصة جديدة</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="addClassSessionDirectForm">
+            <div class="modal-body">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">المعلم</label>
+                  <select class="form-control" id="directSessionTeacher" required>
+                    <option value="">اختر المعلم</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">المادة</label>
+                  <select class="form-control" id="directSessionSubject" required>
+                    <option value="">اختر المادة</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">الصف</label>
+                  <input type="text" class="form-control" id="directSessionGrade" placeholder="مثال: السادس" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">الشعبة</label>
+                  <input type="text" class="form-control" id="directSessionClassName" placeholder="مثال: أ" required>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">اليوم</label>
+                  <select class="form-control" id="directSessionDay" required>
+                    <option value="">اختر اليوم</option>
+                    <option value="الأحد">الأحد</option>
+                    <option value="الإثنين">الإثنين</option>
+                    <option value="الثلاثاء">الثلاثاء</option>
+                    <option value="الأربعاء">الأربعاء</option>
+                    <option value="الخميس">الخميس</option>
+                  </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">وقت البداية</label>
+                  <input type="time" class="form-control" id="directSessionStartTime" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">وقت النهاية</label>
+                  <input type="time" class="form-control" id="directSessionEndTime" required>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">رقم الحصة</label>
+                  <input type="number" class="form-control" id="directSessionPeriod" min="1" max="8" required>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+              <button type="submit" class="btn btn-primary">إضافة الحصة</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة المودال القديم إذا كان موجوداً
+  const oldModal = document.getElementById('addClassSessionDirectModal');
+  if (oldModal) {
+    oldModal.remove();
+  }
+  
+  // إضافة المودال الجديد
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // تحميل بيانات المعلمين والمواد
+  loadDirectTeachersAndSubjects();
+  
+  // عرض المودال
+  const modal = new bootstrap.Modal(document.getElementById('addClassSessionDirectModal'));
+  modal.show();
+  
+  // إضافة مستمع للنموذج
+  document.getElementById('addClassSessionDirectForm').addEventListener('submit', handleAddClassSessionDirect);
+}
+
+// دالة لتحميل المعلمين والمواد في المودال المباشر
+async function loadDirectTeachersAndSubjects() {
+  try {
+    // تحميل المعلمين
+    const teachersResult = await apiService.getTeachers();
+    const teacherSelect = document.getElementById('directSessionTeacher');
+    if (teachersResult.success && teachersResult.data) {
+      teachersResult.data.forEach(teacher => {
+        const option = document.createElement('option');
+        option.value = teacher.id;
+        option.textContent = teacher.name;
+        teacherSelect.appendChild(option);
+      });
+    }
+    
+    // تحميل المواد
+    const subjectsResult = await apiService.getSubjects();
+    const subjectSelect = document.getElementById('directSessionSubject');
+    if (subjectsResult.success && subjectsResult.data) {
+      subjectsResult.data.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = subject.name;
+        subjectSelect.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Error loading teachers and subjects:', error);
+  }
+}
+
+// دالة للتعامل مع إضافة حصة مباشرة
+async function handleAddClassSessionDirect(event) {
+  event.preventDefault();
+  
+  const formData = {
+    teacher_id: document.getElementById('directSessionTeacher').value,
+    subject_id: document.getElementById('directSessionSubject').value,
+    grade: document.getElementById('directSessionGrade').value,
+    class_name: document.getElementById('directSessionClassName').value,
+    day: document.getElementById('directSessionDay').value,
+    start_time: document.getElementById('directSessionStartTime').value,
+    end_time: document.getElementById('directSessionEndTime').value,
+    period_number: parseInt(document.getElementById('directSessionPeriod').value)
+  };
+  
+  try {
+    const result = await apiService.createClassSession(formData);
+    
+    if (result.success) {
+      showAlert('تم إضافة الحصة بنجاح', 'success');
+      
+      // إغلاق المودال
+      const modal = bootstrap.Modal.getInstance(document.getElementById('addClassSessionDirectModal'));
+      modal.hide();
+      
+      // تحديث محتوى الحصص
+      await refreshClassesContent();
+    } else {
+      showAlert('حدث خطأ في إضافة الحصة: ' + result.message, 'danger');
+    }
+  } catch (error) {
+    showAlert('حدث خطأ في إضافة الحصة: ' + error.message, 'danger');
+  }
+}
+
+// دالة لتحديث محتوى الحصص
+async function refreshClassesContent() {
+  const adminContent = document.getElementById('adminContent');
+  if (adminContent) {
+    try {
+      adminContent.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+      const content = await getClassesContent();
+      adminContent.innerHTML = content;
+    } catch (error) {
+      adminContent.innerHTML = `<div class="alert alert-danger">حدث خطأ في تحديث الحصص: ${error.message}</div>`;
+    }
+  }
+}
+
+// دالة لعرض جدول الحصص
+function showClassScheduleView() {
+  // سيتم تنفيذها لاحقاً
+  showAlert('ميزة عرض الجدول ستكون متاحة قريباً', 'info');
+}
+
+// دالة عرض قسم الجدول الأسبوعي
+function showTeacherSchedule() {
+    // إخفاء محتوى الحصص اليومية
+    const classesList = document.getElementById('classesList');
+    const scheduleContainer = document.getElementById('scheduleContainer');
+    const cardTitle = document.getElementById('cardTitle');
+    const backBtn = document.getElementById('backToClassesBtn');
+    
+    if (classesList) classesList.style.display = 'none';
+    if (scheduleContainer) scheduleContainer.style.display = 'block';
+    if (cardTitle) cardTitle.innerHTML = '<i class="bi bi-calendar-week me-2"></i>الجدول الأسبوعي للمعلم';
+    if (backBtn) backBtn.style.display = 'inline-block';
+    
+    loadTeacherSchedule();
+}
+
+// دالة إخفاء قسم الجدول والعودة للحصص اليومية
+function hideScheduleSection() {
+    // إظهار محتوى الحصص اليومية
+    const classesList = document.getElementById('classesList');
+    const scheduleContainer = document.getElementById('scheduleContainer');
+    const cardTitle = document.getElementById('cardTitle');
+    const backBtn = document.getElementById('backToClassesBtn');
+    
+    if (classesList) classesList.style.display = 'block';
+    if (scheduleContainer) scheduleContainer.style.display = 'none';
+    if (cardTitle) cardTitle.innerHTML = '<i class="bi bi-calendar-check me-2"></i>حصص اليوم';
+    if (backBtn) backBtn.style.display = 'none';
+}
+
+// دالة تحميل جدول المعلم الأسبوعي
+async function loadTeacherSchedule() {
+    try {
+        const scheduleContainer = document.getElementById('scheduleContainer');
+        if (!scheduleContainer) return;
+        
+        // إظهار حالة التحميل
+        scheduleContainer.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">جاري التحميل...</span>
+                </div>
+                <p class="mt-3 text-muted">جاري تحميل الجدول الأسبوعي...</p>
+            </div>
+        `;
+        
+        const sessionsResult = await apiService.getTeacherSessions();
+        const sessions = sessionsResult.data || [];
+        
+        console.log('بيانات الحصص للجدول الأسبوعي:', sessions);
+        
+        if (!sessions || sessions.length === 0) {
+            scheduleContainer.innerHTML = `
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-info-circle me-2"></i>
+                    لا توجد حصص مجدولة هذا الأسبوع
+                </div>
+            `;
+            return;
+        }
+
+        // أيام الأسبوع
+        const daysOfWeek = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+        const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
+        
+        let scheduleHTML = `
+            <div class="table-responsive">
+                <table class="table table-bordered text-center" id="scheduleTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">الوقت</th>
+                            ${daysOfWeek.map(day => `<th>${day}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        // إنشاء جدول الحصص
+        timeSlots.forEach(timeSlot => {
+            scheduleHTML += `<tr>`;
+            scheduleHTML += `<td class="fw-bold bg-light">${formatTo12Hour(timeSlot)} - ${formatTo12Hour(addOneHour(timeSlot))}</td>`;
+            
+            daysOfWeek.forEach((day, dayIndex) => {
+                // البحث عن الحصة بناءً على اليوم والوقت
+                const session = sessions.find(s => {
+                    const sessionDay = s.day;
+                    const sessionTime = s.start_time ? s.start_time.substring(0, 5) : '';
+                    
+                    console.log(`البحث عن حصة: اليوم=${day}, الوقت=${timeSlot}, حصة: يوم=${sessionDay}, وقت=${sessionTime}`);
+                    
+                    return sessionDay === day && sessionTime === timeSlot;
+                });
+
+                if (session) {
+                    const currentDay = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+                    const isToday = dayIndex === currentDay;
+                    
+                    scheduleHTML += `
+                        <td class="schedule-cell ${isToday ? 'current-day' : ''}">
+                            <div class="fw-bold text-primary">${session.subject?.name || 'غير محدد'}</div>
+                            <div class="small text-muted">${session.grade || 'غير محدد'}</div>
+                        </td>
+                    `;
+                } else {
+                    scheduleHTML += `<td class="text-muted">-</td>`;
+                }
+            });
+            
+            scheduleHTML += `</tr>`;
+        });
+
+        scheduleHTML += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        scheduleContainer.innerHTML = scheduleHTML;
+        
+    } catch (error) {
+        console.error('خطأ في تحميل الجدول الأسبوعي:', error);
+        const scheduleContainer = document.getElementById('scheduleContainer');
+        if (scheduleContainer) {
+            scheduleContainer.innerHTML = `
+                <div class="alert alert-danger text-center">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    خطأ في تحميل الجدول الأسبوعي: ${error.message || 'خطأ غير معروف'}
+                    <br>
+                    <button class="btn btn-outline-primary btn-sm mt-2" onclick="loadTeacherSchedule()">إعادة المحاولة</button>
+                </div>
+            `;
+        }
+    }
+}
+
+// دالة مساعدة لتحويل اليوم إلى فهرس
+function getDayIndex(dayName) {
+    const days = {
+        'الأحد': 0,
+        'الاثنين': 1,
+        'الثلاثاء': 2,
+        'الأربعاء': 3,
+        'الخميس': 4
+    };
+    return days[dayName] || 0;
+}
+
+// دالة مساعدة لإضافة ساعة للوقت
+function addOneHour(time) {
+    const [hours, minutes] = time.split(':').map(Number);
+    const newHours = (hours + 1) % 24;
+    return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }

@@ -680,15 +680,15 @@ body {
 }
 
 .student-item.present {
-  background-color: rgba(var(--color-success-rgb), 0.1);
-  border-color: rgba(var(--color-success-rgb), 0.3);
-  color: var(--color-success);
+  background-color: rgba(var(--color-success-rgb), 0.15);
+  border-color: rgba(var(--color-success-rgb), 0.4);
+  color: #1f5f32; /* لون أخضر داكن للنص */
 }
 
 .student-item.absent {
-  background-color: rgba(var(--color-error-rgb), 0.1);
-  border-color: rgba(var(--color-error-rgb), 0.3);
-  color: var(--color-error);
+  background-color: rgba(var(--color-error-rgb), 0.15);
+  border-color: rgba(var(--color-error-rgb), 0.4);
+  color: #d2232a; /* لون أحمر داكن للنص */
 }
 
 .student-item:active {
@@ -714,13 +714,32 @@ body {
 .attendance-status {
   display: flex;
   align-items: center;
-  font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
 }
 
 .status-icon {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xl);
   margin-left: var(--space-8);
+}
+
+/* تحسينات إضافية للألوان */
+.student-item.present .status-text {
+  color: #1f5f32;
+  font-weight: var(--font-weight-bold);
+}
+
+.student-item.absent .status-text {
+  color: #d2232a;
+  font-weight: var(--font-weight-bold);
+}
+
+.student-item.present .status-icon {
+  color: #22c55e;
+}
+
+.student-item.absent .status-icon {
+  color: #ef4444;
 }
 
 /* بطاقات الإحصائيات */
@@ -1024,4 +1043,105 @@ small, .small {
     box-shadow: none;
     border: 1px solid #000;
   }
+}
+
+/* جدول المعلم */
+.schedule-cell {
+  border-radius: 6px;
+  padding: 8px;
+  background-color: rgba(var(--color-success-rgb), 0.05);
+  border: 1px solid rgba(var(--color-success-rgb), 0.2);
+  transition: all 0.2s ease;
+}
+
+.schedule-cell:hover {
+  background-color: rgba(var(--color-success-rgb), 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.schedule-cell.current-day {
+  background-color: rgba(var(--color-warning-rgb), 0.15);
+  border-color: rgba(var(--color-warning-rgb), 0.3);
+  animation: pulse 2s infinite;
+}
+
+/* أنماط حالات الحصص */
+.class-card.current {
+  border-left: 4px solid var(--color-success) !important;
+  background: linear-gradient(135deg, rgba(25, 135, 84, 0.05), rgba(25, 135, 84, 0.02));
+  animation: currentPulse 2s ease-in-out infinite;
+}
+
+.class-card.past {
+  border-left: 4px solid #6c757d !important;
+  background-color: rgba(108, 117, 125, 0.03);
+  opacity: 0.8;
+}
+
+.class-card.future {
+  border-left: 4px solid #ffc107 !important;
+  background-color: rgba(255, 193, 7, 0.03);
+}
+
+@keyframes currentPulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(25, 135, 84, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(25, 135, 84, 0.5); }
+}
+
+/* تحسينات إضافية للحصص */
+.class-card:hover.current {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(25, 135, 84, 0.2) !important;
+}
+
+.class-card:hover.past {
+  transform: none;
+  cursor: not-allowed;
+}
+
+.class-card:hover.future {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+/* تحسينات الجدول */
+#scheduleTable th {
+  background-color: var(--color-success) !important;
+  color: white !important;
+  font-weight: var(--font-weight-bold);
+  text-align: center;
+  vertical-align: middle;
+}
+
+#scheduleTable td {
+  vertical-align: middle;
+  min-height: 60px;
+}
+
+.table-warning td {
+  background-color: rgba(255, 193, 7, 0.1) !important;
+  border-color: rgba(255, 193, 7, 0.3) !important;
+}
+
+/* شريط التنقل للمعلم */
+.navbar-nav .dropdown-menu {
+  border: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border-radius: 8px;
+}
+
+.navbar-nav .dropdown-item {
+  padding: 8px 16px;
+  transition: all 0.2s ease;
+}
+
+.navbar-nav .dropdown-item:hover {
+  background-color: rgba(var(--color-success-rgb), 0.1);
+  color: var(--color-success);
+}
+
+.navbar-nav .dropdown-item.text-danger:hover {
+  background-color: rgba(var(--color-error-rgb), 0.1);
+  color: var(--color-error);
 }
