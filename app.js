@@ -97,11 +97,29 @@ let attendanceData = {};
 // تهيئة التطبيق
 document.addEventListener('DOMContentLoaded', async function() {
   console.log('تطبيق محمل بنجاح');
+  
+  // فحص URL للوصول المباشر لواجهة الإدارة
+  checkAdminAccess();
+  
   await initializeApp();
   setupEventListeners();
   updateDateTime();
   setInterval(updateDateTime, 60000); // تحديث كل دقيقة
 });
+
+// فحص الوصول لواجهة الإدارة من خلال URL
+function checkAdminAccess() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash;
+  
+  // إذا كان URL يحتوي على admin أو #admin
+  if (urlParams.get('admin') === 'true' || hash === '#admin') {
+    console.log('تم الوصول لواجهة الإدارة من خلال URL');
+    setTimeout(() => {
+      showPage('adminLogin');
+    }, 100);
+  }
+}
 
 // تهيئة التطبيق
 async function initializeApp() {
@@ -141,6 +159,7 @@ function setupEventListeners() {
   // أزرار الصفحة الرئيسية
   const teacherLoginBtn = document.getElementById('teacherLoginBtn');
   const adminLoginBtn = document.getElementById('adminLoginBtn');
+  const adminSecretLink = document.getElementById('adminSecretLink');
   
   if (teacherLoginBtn) {
     teacherLoginBtn.addEventListener('click', function(e) {
@@ -154,6 +173,15 @@ function setupEventListeners() {
     adminLoginBtn.addEventListener('click', function(e) {
       e.preventDefault();
       console.log('النقر على زر دخول الإدارة');
+      showPage('adminLogin');
+    });
+  }
+  
+  // الرابط الخفي لواجهة الإدارة
+  if (adminSecretLink) {
+    adminSecretLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('النقر على الرابط الخفي للإدارة');
       showPage('adminLogin');
     });
   }

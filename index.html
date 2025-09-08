@@ -17,29 +17,28 @@
                     <i class="bi bi-journal-check display-1 text-primary"></i>
                 </div>
                 <h1 class="display-4 mb-4">نظام إدارة الحضور</h1>
-                <p class="lead mb-5">اختر نوع الواجهة</p>
+                <p class="lead mb-5">تسجيل دخول المعلم</p>
                 
-                <div class="row g-4">
-                    <div class="col-md-6">
+                <div class="row justify-content-center">
+                    <div class="col-md-6 col-lg-4">
                         <div class="card interface-card h-100">
-                            <div class="card-body text-center p-4">
-                                <i class="bi bi-person-check display-2 text-success mb-3"></i>
-                                <h3 class="card-title mb-3">واجهة المعلم</h3>
-                                <p class="card-text">تحضير الطلاب وإدارة الحصص</p>
-                                <button class="btn btn-success btn-lg" id="teacherLoginBtn">دخول المعلم</button>
+                            <div class="card-body text-center p-5">
+                                <i class="bi bi-person-check display-1 text-success mb-4"></i>
+                                <h3 class="card-title mb-4">دخول المعلم</h3>
+                                <p class="card-text mb-4">تحضير الطلاب وإدارة الحصص</p>
+                                <button class="btn btn-success btn-lg px-5" id="teacherLoginBtn">تسجيل الدخول</button>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card interface-card h-100">
-                            <div class="card-body text-center p-4">
-                                <i class="bi bi-gear display-2 text-primary mb-3"></i>
-                                <h3 class="card-title mb-3">واجهة الإدارة</h3>
-                                <p class="card-text">إدارة النظام والتقارير</p>
-                                <button class="btn btn-primary btn-lg" id="adminLoginBtn">دخول الإدارة</button>
-                            </div>
-                        </div>
-                    </div>
+                </div>
+                
+                <!-- رابط خفي لواجهة الإدارة -->
+                <div class="mt-5">
+                    <small class="text-muted">
+                        <a href="#" id="adminSecretLink" class="text-decoration-none text-muted" style="opacity: 0.3;">
+                            <small>إدارة النظام</small>
+                        </a>
+                    </small>
                 </div>
             </div>
         </div>
