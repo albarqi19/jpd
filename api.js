@@ -300,27 +300,37 @@ class ApiService {
 
   // === الاستيراد ===
   async importStudents(formData) {
-    const response = await fetch(`${this.baseUrl}/admin/import/students`, {
+    const response = await fetch(`${this.baseURL}/admin/import/students`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.getToken()}`
+        'Authorization': `Bearer ${this.token}`,
+        'ngrok-skip-browser-warning': 'true'
       },
       body: formData
     });
     
-    return this.handleResponse(response);
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || 'حدث خطأ في الشبكة');
+    }
+    return result;
   }
 
   async importTeachers(formData) {
-    const response = await fetch(`${this.baseUrl}/admin/import/teachers`, {
+    const response = await fetch(`${this.baseURL}/admin/import/teachers`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.getToken()}`
+        'Authorization': `Bearer ${this.token}`,
+        'ngrok-skip-browser-warning': 'true'
       },
       body: formData
     });
     
-    return this.handleResponse(response);
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || 'حدث خطأ في الشبكة');
+    }
+    return result;
   }
 }
 
