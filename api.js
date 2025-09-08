@@ -1,7 +1,7 @@
 // خدمة API للتواصل مع Laravel
 class ApiService {
   constructor() {
-    this.baseURL = 'http://localhost:8003/api';
+    this.baseURL = 'https://lael-comose-rocio.ngrok-free.app/api';
     this.loadToken(); // تحميل التوكن من localStorage
   }
 
