@@ -387,7 +387,7 @@ async function handleTeacherLogin() {
     
     if (result.success) {
       currentUser = result.data.user;
-      const token = result.data.access_token;
+      const token = result.data.token; // تصحيح: استخدام token بدلاً من access_token
       
       // حفظ الجلسة
       apiService.setToken(token);
@@ -438,7 +438,7 @@ async function handleAdminLogin() {
     
     if (result.success) {
       currentUser = result.data.user;
-      const token = result.data.access_token;
+      const token = result.data.token; // تصحيح: استخدام token بدلاً من access_token
       
       // حفظ الجلسة
       apiService.setToken(token);
