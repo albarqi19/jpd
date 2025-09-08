@@ -1646,8 +1646,31 @@ function showImportResults(data, type, credentials = null) {
 // تحميل قالب الطلاب
 async function downloadStudentsTemplate() {
   try {
-    window.open(API_BASE_URL + '/admin/import/students/template', '_blank');
+    const response = await fetch(apiService.baseURL + '/admin/import/students/template', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiService.token}`,
+        'Accept': 'text/csv',
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'قالب_الطلاب.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      showNotification('تم تحميل القالب بنجاح', 'success');
+    } else {
+      throw new Error('فشل في تحميل القالب');
+    }
   } catch (error) {
+    console.error('خطأ في تحميل القالب:', error);
     showNotification('حدث خطأ أثناء تحميل القالب', 'error');
   }
 }
@@ -1655,7 +1678,29 @@ async function downloadStudentsTemplate() {
 // تحميل قالب المعلمين
 async function downloadTeachersTemplate() {
   try {
-    window.open(API_BASE_URL + '/admin/import/teachers/template', '_blank');
+    const response = await fetch(apiService.baseURL + '/admin/import/teachers/template', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiService.token}`,
+        'Accept': 'text/csv',
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'قالب_المعلمين.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      showNotification('تم تحميل القالب بنجاح', 'success');
+    } else {
+      throw new Error('فشل في تحميل القالب');
+    }
   } catch (error) {
     showNotification('حدث خطأ أثناء تحميل القالب', 'error');
   }
