@@ -341,7 +341,7 @@ async function restoreUserSession() {
 // حفظ حالة المستخدم في التخزين المحلي
 function saveUserSession(token, userData) {
   try {
-    localStorage.setItem('auth_token', token);
+    apiService.setToken(token); // استخدام apiService لحفظ التوكن
     localStorage.setItem('user_data', JSON.stringify(userData));
     console.log('تم حفظ جلسة المستخدم');
   } catch (error) {
