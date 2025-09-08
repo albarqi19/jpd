@@ -1660,7 +1660,7 @@ async function downloadStudentsTemplate() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'قالب_الطلاب.csv';
+      a.download = 'قالب_استيراد_الطلاب.csv';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1692,7 +1692,7 @@ async function downloadTeachersTemplate() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'قالب_المعلمين.csv';
+      a.download = 'قالب_استيراد_المعلمين.csv';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
