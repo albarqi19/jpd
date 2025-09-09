@@ -81,11 +81,11 @@ const appData = {
     }
   ],
   stats: {
-    totalStudents: 150,
-    presentToday: 142,
-    absentToday: 8,
-    totalTeachers: 25,
-    totalClasses: 45
+    totalStudents: 0,
+    presentToday: 0,
+    absentToday: 0,
+    totalTeachers: 0,
+    totalClasses: 0
   }
 };
 
