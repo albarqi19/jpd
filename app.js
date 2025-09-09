@@ -427,9 +427,15 @@ async function restoreUserSession() {
         const response = await apiService.me();
         if (response.success) {
           // تحديث بيانات المستخدم إذا كانت مختلفة
-          currentUser = response.data;
+          // التحقق من بنية البيانات المرجعة
+          if (response.data.user) {
+            currentUser = response.data.user; // إذا كانت البيانات مغلفة في user
+          } else {
+            currentUser = response.data; // إذا كانت البيانات مباشرة
+          }
           saveUserSession(token, currentUser);
           console.log('تم استرجاع جلسة المستخدم بنجاح:', currentUser);
+          console.log('دور المستخدم:', currentUser.role);
           return true;
         }
       } catch (error) {
