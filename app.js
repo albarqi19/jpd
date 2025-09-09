@@ -129,17 +129,22 @@ async function initializeApp() {
   // إذا كان المستخدم مسجل دخول، اذهب لوحة التحكم المناسبة
   if (sessionRestored && currentUser) {
     console.log('تم استرجاع الجلسة، توجيه المستخدم للوحة التحكم...');
+    console.log('بيانات المستخدم الحالي:', currentUser);
     
     if (currentUser.role === 'teacher') {
+      console.log('توجيه للوحة تحكم المعلم...');
       showPage('teacherDashboard');
       // تأخير صغير للتأكد من تحميل الصفحة
       setTimeout(() => {
+        console.log('بدء تحميل لوحة تحكم المعلم...');
         loadTeacherDashboard();
       }, 200);
     } else if (currentUser.role === 'admin') {
+      console.log('توجيه للوحة تحكم الإدارة...');
       showPage('adminDashboard');
       // تأخير صغير للتأكد من تحميل الصفحة
       setTimeout(() => {
+        console.log('بدء تحميل لوحة تحكم الإدارة...');
         loadAdminDashboard();
       }, 200);
     }
@@ -189,6 +194,14 @@ function startSessionCheck() {
         const expiryTime = parseInt(sessionExpiry);
         const currentTime = new Date().getTime();
         
+        // التأكد من أن وقت انتهاء الصلاحية صحيح
+        if (isNaN(expiryTime) || expiryTime <= 0) {
+          console.log('وقت انتهاء الجلسة غير صحيح، سيتم تجديده');
+          const newExpiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
+          localStorage.setItem('session_expiry', newExpiryTime.toString());
+          return;
+        }
+        
         // إذا بقي أقل من 10 دقائق على انتهاء الجلسة
         if (currentTime > expiryTime - (10 * 60 * 1000) && currentTime < expiryTime) {
           showNotification('ستنتهي الجلسة خلال 10 دقائق', 'warning');
@@ -199,6 +212,11 @@ function startSessionCheck() {
           showNotification('انتهت صلاحية الجلسة، سيتم تسجيل الخروج', 'error');
           logout();
         }
+      } else {
+        // إذا لم يكن هناك وقت انتهاء محفوظ، اضبط واحد جديد
+        console.log('لا يوجد وقت انتهاء محفوظ، سيتم إنشاء واحد جديد');
+        const newExpiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
+        localStorage.setItem('session_expiry', newExpiryTime.toString());
       }
     }
   }, 30000); // كل 30 ثانية
@@ -350,11 +368,13 @@ function showPage(pageId) {
   // عرض الصفحة المحددة
   const targetPage = document.getElementById(pageId);
   if (targetPage) {
+    console.log('تم العثور على الصفحة المطلوبة:', pageId);
     targetPage.classList.add('active');
     targetPage.classList.add('fade-in');
     
     // تحديث المحتوى حسب الصفحة
     setTimeout(() => {
+      console.log('تحديث محتوى الصفحة:', pageId);
       if (pageId === 'teacherDashboard') {
         loadTeacherDashboard();
       } else if (pageId === 'adminDashboard') {
@@ -556,7 +576,13 @@ async function handleAdminLogin() {
 
 // تحميل لوحة تحكم المعلم
 async function loadTeacherDashboard() {
-  if (!currentUser) return;
+  console.log('=== بدء تحميل لوحة تحكم المعلم ===');
+  console.log('المستخدم الحالي:', currentUser);
+  
+  if (!currentUser) {
+    console.error('لا يوجد مستخدم حالي!');
+    return;
+  }
   
   console.log('تحميل لوحة تحكم المعلم');
   updateDateTime(); // تحديث الوقت فوراً
@@ -567,15 +593,23 @@ async function loadTeacherDashboard() {
     apiService.loadToken();
   }
   
+  console.log('التوكن الحالي:', apiService.token?.substring(0, 20) + '...');
+  
   // عرض اسم المعلم
   const teacherNameEl = document.getElementById('teacherName');
   if (teacherNameEl) {
     teacherNameEl.textContent = currentUser.name;
+    console.log('تم تعيين اسم المعلم:', currentUser.name);
+  } else {
+    console.error('عنصر اسم المعلم غير موجود!');
   }
   
   // عرض الحصص
   const classesList = document.getElementById('classesList');
-  if (!classesList) return;
+  if (!classesList) {
+    console.error('عنصر قائمة الحصص غير موجود!');
+    return;
+  }
 
   try {
     // إظهار حالة التحميل
