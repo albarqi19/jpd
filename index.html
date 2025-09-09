@@ -362,14 +362,14 @@
                         <button class="list-group-item list-group-item-action" data-section="students">
                             <i class="bi bi-people me-2"></i>إدارة الطلاب
                         </button>
-                        <button class="list-group-item list-group-item-action" data-section="classes">
-                            <i class="bi bi-calendar-check me-2"></i>إدارة الحصص
-                        </button>
                         <button class="list-group-item list-group-item-action" data-section="subjects">
                             <i class="bi bi-book me-2"></i>إدارة المواد
                         </button>
-                        <button class="list-group-item list-group-item-action" data-section="grades">
-                            <i class="bi bi-list-ol me-2"></i>إدارة الفصول
+                        <button class="list-group-item list-group-item-action" data-section="schedules">
+                            <i class="bi bi-clock me-2"></i>إدارة التوقيتات
+                        </button>
+                        <button class="list-group-item list-group-item-action" data-section="class-schedules">
+                            <i class="bi bi-table me-2"></i>جداول الفصول
                         </button>
                         <button class="list-group-item list-group-item-action" data-section="import">
                             <i class="bi bi-file-earmark-excel me-2"></i>استيراد الملفات
@@ -379,6 +379,9 @@
                         </button>
                         <button class="list-group-item list-group-item-action" data-section="approval">
                             <i class="bi bi-check2-square me-2"></i>اعتماد التحضير
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="openWhatsappManager()">
+                            <i class="bi bi-whatsapp me-2"></i>إدارة الواتساب
                         </button>
                         <button class="list-group-item list-group-item-action" data-section="settings">
                             <i class="bi bi-gear me-2"></i>الإعدادات
@@ -559,7 +562,7 @@
 
     <!-- مودال إضافة حصة جديدة -->
     <div class="modal fade" id="addClassModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-md">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">إضافة حصة جديدة</h5>
@@ -567,73 +570,46 @@
                 </div>
                 <form id="addClassForm">
                     <div class="modal-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">المعلم</label>
-                                    <select class="form-control" id="classTeacherId" required>
-                                        <option value="">اختر المعلم</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">المادة</label>
-                                    <select class="form-control" id="classSubjectId" required>
-                                        <option value="">اختر المادة</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <!-- معلومات الموقع في الجدول -->
+                        <div class="alert alert-info mb-3" id="sessionLocationInfo">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <span id="sessionLocationText"></span>
                         </div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">الصف</label>
-                                    <input type="text" class="form-control" id="classGrade" placeholder="مثال: الأول الثانوي" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">الشعبة</label>
-                                    <input type="text" class="form-control" id="className" placeholder="مثال: أ" required>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">اليوم</label>
-                                    <select class="form-control" id="classDay" required>
-                                        <option value="">اختر اليوم</option>
-                                        <option value="الأحد">الأحد</option>
-                                        <option value="الإثنين">الإثنين</option>
-                                        <option value="الثلاثاء">الثلاثاء</option>
-                                        <option value="الأربعاء">الأربعاء</option>
-                                        <option value="الخميس">الخميس</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">وقت البداية</label>
-                                    <input type="time" class="form-control" id="classStartTime" required>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">وقت النهاية</label>
-                                    <input type="time" class="form-control" id="classEndTime" required>
-                                </div>
-                            </div>
-                        </div>
+                        
+                        <!-- الحقول المطلوبة فقط -->
                         <div class="mb-3">
-                            <label class="form-label">رقم الحصة</label>
-                            <input type="number" class="form-control" id="classPeriodNumber" min="1" max="8" required>
+                            <label class="form-label">المعلم <span class="text-danger">*</span></label>
+                            <select class="form-control" id="classTeacherId" required>
+                                <option value="">اختر المعلم</option>
+                            </select>
                         </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">المادة <span class="text-danger">*</span></label>
+                            <select class="form-control" id="classSubjectId" required>
+                                <option value="">اختر المادة</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">ملاحظات (اختياري)</label>
+                            <textarea class="form-control" id="classNotes" rows="2" placeholder="أي ملاحظات إضافية..."></textarea>
+                        </div>
+                        
+                        <!-- الحقول المخفية -->
+                        <input type="hidden" id="classGrade">
+                        <input type="hidden" id="className">
+                        <input type="hidden" id="classDay">
+                        <input type="hidden" id="classPeriodNumber">
+                        <input type="hidden" id="selectedScheduleId">
+                        <input type="hidden" id="classStartTime">
+                        <input type="hidden" id="classEndTime">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
-                        <button type="submit" class="btn btn-primary">إضافة الحصة</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle me-2"></i>إضافة الحصة
+                        </button>
                     </div>
                 </form>
             </div>

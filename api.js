@@ -1,7 +1,7 @@
 // خدمة API للتواصل مع Laravel
 class ApiService {
   constructor() {
-    this.baseURL = 'https://lael-comose-rocio.ngrok-free.app/api';
+    this.baseURL = 'http://localhost:8003/api';
     this.loadToken(); // تحميل التوكن من localStorage
   }
 
@@ -62,16 +62,28 @@ class ApiService {
     }
 
     try {
+      console.log('إرسال طلب إلى:', `${this.baseURL}${endpoint}`);
+      console.log('إعدادات الطلب:', config);
+      
       const response = await fetch(`${this.baseURL}${endpoint}`, config);
+      
+      console.log('استجابة الخادم:', response.status, response.statusText);
+      
       const result = await response.json();
 
       if (!response.ok) {
+        console.error('خطأ من الخادم:', result);
         throw new Error(result.message || 'حدث خطأ في الشبكة');
       }
 
       return result;
     } catch (error) {
-      console.error('API Error:', error);
+      console.error('API Error Details:', {
+        message: error.message,
+        stack: error.stack,
+        endpoint: `${this.baseURL}${endpoint}`,
+        config: config
+      });
       throw error;
     }
   }
@@ -331,6 +343,254 @@ class ApiService {
       throw new Error(result.message || 'حدث خطأ في الشبكة');
     }
     return result;
+  }
+
+  // === إدارة التوقيتات ===
+  async getSchedules() {
+    return this.get('/admin/schedules');
+  }
+
+  async getScheduleDetails(scheduleId) {
+    return this.get(`/admin/schedules/${scheduleId}`);
+  }
+
+  async createSchedule(scheduleData) {
+    return this.post('/admin/schedules', scheduleData);
+  }
+
+  async activateSchedule(scheduleId) {
+    return this.post(`/admin/schedules/${scheduleId}/activate`);
+  }
+
+  async deleteSchedule(scheduleId) {
+    return this.delete(`/admin/schedules/${scheduleId}`);
+  }
+
+  async getScheduleTemplates() {
+    return this.get('/admin/schedules/templates');
+  }
+
+  // === إدارة جداول الفصول ===
+  async getClasses() {
+    return this.get('/admin/class-schedules/classes');
+  }
+
+  async getClassSchedule(grade, className) {
+    return this.get(`/admin/class-schedules/${encodeURIComponent(grade)}/${encodeURIComponent(className)}`);
+  }
+
+  async addQuickSession(sessionData) {
+    return this.post('/admin/class-schedules/quick-session', sessionData);
+  }
+
+  async applyScheduleToClass(data) {
+    return this.post('/admin/class-schedules/apply-schedule', data);
+  }
+
+  async deleteClassSession(sessionId) {
+    return this.delete(`/admin/class-schedules/sessions/${sessionId}`);
+  }
+
+  async getSessionData() {
+    return this.get('/admin/class-schedules/session-data');
+  }
+
+  // ===== تقارير الحضور =====
+  
+  // الحصول على تقارير الحضور مع فلاتر
+  async getAttendanceReports(filters = {}) {
+    let endpoint = '/admin/attendance-reports';
+    
+    // إضافة query parameters للفلاتر
+    const queryParams = new URLSearchParams();
+    Object.keys(filters).forEach(key => {
+      if (filters[key]) {
+        queryParams.append(key, filters[key]);
+      }
+    });
+    
+    if (queryParams.toString()) {
+      endpoint += '?' + queryParams.toString();
+    }
+    
+    return this.get(endpoint);
+  }
+
+  // الحصول على التحضيرات في انتظار الاعتماد
+  async getPendingApprovals() {
+    return this.get('/admin/attendance-reports/pending-approvals');
+  }
+
+  // اعتماد سجل حضور
+  async approveAttendance(attendanceId) {
+    return this.post(`/admin/attendance-reports/${attendanceId}/approve`);
+  }
+
+  // اعتماد جلسة حضور كاملة
+  async approveSession(sessionId, date) {
+    return this.post('/admin/attendance-reports/approve-session', {
+      session_id: sessionId,
+      date: date
+    });
+  }
+
+  // رفض جلسة حضور كاملة
+  async rejectSession(sessionId, date, reason = null) {
+    return this.post('/admin/attendance-reports/reject-session', {
+      session_id: sessionId,
+      date: date,
+      reason: reason
+    });
+  }
+
+  // تصدير تقرير الحضور
+  async exportAttendanceReport(format, filters = {}) {
+    let endpoint = `/admin/attendance-reports/export/${format}`;
+    
+    // إضافة query parameters للفلاتر
+    const queryParams = new URLSearchParams();
+    Object.keys(filters).forEach(key => {
+      if (filters[key]) {
+        queryParams.append(key, filters[key]);
+      }
+    });
+    
+    if (queryParams.toString()) {
+      endpoint += '?' + queryParams.toString();
+    }
+    
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Accept': 'application/octet-stream'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return response.blob();
+  }
+
+  // اعتماد سجل حضور
+  async approveAttendance(attendanceId) {
+    return this.post(`/admin/attendance-reports/${attendanceId}/approve`);
+  }
+
+  // رفض سجل حضور
+  async rejectAttendance(attendanceId, data = {}) {
+    return this.post(`/admin/attendance-reports/${attendanceId}/reject`, data);
+  }
+
+  // الحصول على تفاصيل جلسة الحضور
+  async getAttendanceSessionDetails(attendanceId) {
+    return this.get(`/admin/attendance-reports/${attendanceId}/details`);
+  }
+
+  // ===== دوال المعلمين =====
+  
+  // حفظ الحضور (للمعلمين)
+  async submitAttendance(sessionId, attendanceData) {
+    return this.post(`/teacher/sessions/${sessionId}/attendance`, attendanceData);
+  }
+
+  // جلب التحضير المرسل سابقاً
+  async getSubmittedAttendance(sessionId, date = null) {
+    let endpoint = `/teacher/sessions/${sessionId}/submitted-attendance`;
+    if (date) {
+      endpoint += `?date=${date}`;
+    }
+    return this.get(endpoint);
+  }
+
+  // الحصول على حصص المعلم
+  async getTeacherSessions(teacherId = null) {
+    const endpoint = teacherId ? `/teacher/sessions?teacher_id=${teacherId}` : '/teacher/sessions';
+    return this.get(endpoint);
+  }
+
+  // الحصول على الحصة الحالية
+  async getCurrentSession() {
+    return this.get('/teacher/current-session');
+  }
+
+  // الحصول على طلاب الحصة
+  async getSessionStudents(sessionId) {
+    return this.get(`/teacher/sessions/${sessionId}/students`);
+  }
+
+  // الحصول على إحصائيات المعلم
+  async getTeacherStats() {
+    return this.get('/teacher/dashboard-stats');
+  }
+
+  // ======== دوال الواتساب ========
+
+  // الحصول على إحصائيات الواتساب
+  async getWhatsappStatistics() {
+    return this.get('/admin/whatsapp/statistics');
+  }
+
+  // الحصول على قائمة انتظار الواتساب
+  async getWhatsappQueue() {
+    return this.get('/admin/whatsapp/queue');
+  }
+
+  // الحصول على سجل الواتساب
+  async getWhatsappHistory() {
+    return this.get('/admin/whatsapp/history');
+  }
+
+  // الحصول على إعدادات الواتساب
+  async getWhatsappSettings() {
+    return this.get('/admin/whatsapp/settings');
+  }
+
+  // تحديث إعدادات الواتساب
+  async updateWhatsappSettings(settings) {
+    return this.put('/admin/whatsapp/settings', settings);
+  }
+
+  // الحصول على قوالب الواتساب
+  async getWhatsappTemplates() {
+    return this.get('/admin/whatsapp/templates');
+  }
+
+  // إنشاء قالب واتساب جديد
+  async createWhatsappTemplate(template) {
+    return this.post('/admin/whatsapp/templates', template);
+  }
+
+  // تحديث قالب واتساب
+  async updateWhatsappTemplate(id, template) {
+    return this.put(`/admin/whatsapp/templates/${id}`, template);
+  }
+
+  // حذف قالب واتساب
+  async deleteWhatsappTemplate(id) {
+    return this.delete(`/admin/whatsapp/templates/${id}`);
+  }
+
+  // إرسال الرسائل المعلقة
+  async sendPendingWhatsappMessages() {
+    return this.post('/admin/whatsapp/send-pending');
+  }
+
+  // إرسال رسالة واحدة
+  async sendSingleWhatsappMessage(id) {
+    return this.post(`/admin/whatsapp/send-single/${id}`);
+  }
+
+  // اختبار اتصال الواتساب
+  async testWhatsappConnection() {
+    return this.post('/admin/whatsapp/test-connection');
+  }
+
+  // حذف رسالة من قائمة الانتظار
+  async deleteWhatsappMessage(id) {
+    return this.delete(`/admin/whatsapp/queue/${id}`);
   }
 }
 

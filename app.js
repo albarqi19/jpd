@@ -152,6 +152,56 @@ async function initializeApp() {
   appData.students.forEach(student => {
     attendanceData[student.id] = 'present';
   });
+  
+  // بدء التحقق الدوري من صلاحية الجلسة
+  startSessionCheck();
+  
+  // مراقبة حالة الاتصال بالإنترنت
+  window.addEventListener('online', function() {
+    showNotification('تم إعادة الاتصال بالإنترنت', 'success');
+  });
+  
+  window.addEventListener('offline', function() {
+    showNotification('انقطع الاتصال بالإنترنت - سيتم حفظ البيانات محلياً', 'warning');
+  });
+}
+
+// التحقق الدوري من صلاحية الجلسة
+function startSessionCheck() {
+  // تجديد الجلسة عند أي نشاط من المستخدم
+  function refreshSession() {
+    if (currentUser) {
+      const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 ساعة جديدة
+      localStorage.setItem('session_expiry', expiryTime.toString());
+    }
+  }
+  
+  // إضافة مستمعات للنشاط
+  document.addEventListener('click', refreshSession);
+  document.addEventListener('keypress', refreshSession);
+  document.addEventListener('scroll', refreshSession);
+  
+  // فحص كل 30 ثانية
+  setInterval(() => {
+    if (currentUser) {
+      const sessionExpiry = localStorage.getItem('session_expiry');
+      if (sessionExpiry) {
+        const expiryTime = parseInt(sessionExpiry);
+        const currentTime = new Date().getTime();
+        
+        // إذا بقي أقل من 10 دقائق على انتهاء الجلسة
+        if (currentTime > expiryTime - (10 * 60 * 1000) && currentTime < expiryTime) {
+          showNotification('ستنتهي الجلسة خلال 10 دقائق', 'warning');
+        }
+        
+        // إذا انتهت الجلسة
+        if (currentTime > expiryTime) {
+          showNotification('انتهت صلاحية الجلسة، سيتم تسجيل الخروج', 'error');
+          logout();
+        }
+      }
+    }
+  }, 30000); // كل 30 ثانية
 }
 
 // إعداد مستمعي الأحداث
@@ -324,8 +374,21 @@ async function restoreUserSession() {
     // استرجاع التوكن
     const token = localStorage.getItem('auth_token');
     const userData = localStorage.getItem('user_data');
+    const sessionExpiry = localStorage.getItem('session_expiry');
     
     if (token && userData) {
+      // فحص انتهاء صلاحية الجلسة
+      if (sessionExpiry) {
+        const expiryTime = parseInt(sessionExpiry);
+        const currentTime = new Date().getTime();
+        
+        if (currentTime > expiryTime) {
+          console.log('انتهت صلاحية الجلسة، سيتم مسح البيانات');
+          clearUserSession();
+          return false;
+        }
+      }
+      
       console.log('العثور على توكن محفوظ:', token?.substring(0, 20) + '...');
       
       // تعيين التوكن في apiService
@@ -371,6 +434,11 @@ function saveUserSession(token, userData) {
   try {
     apiService.setToken(token); // استخدام apiService لحفظ التوكن
     localStorage.setItem('user_data', JSON.stringify(userData));
+    
+    // حفظ وقت انتهاء الجلسة (24 ساعة من الآن)
+    const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
+    localStorage.setItem('session_expiry', expiryTime.toString());
+    
     console.log('تم حفظ جلسة المستخدم');
   } catch (error) {
     console.error('خطأ في حفظ الجلسة:', error);
@@ -382,6 +450,7 @@ function clearUserSession() {
   try {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_data');
+    localStorage.removeItem('session_expiry');
     apiService.clearAuthToken();
     currentUser = null;
     console.log('تم مسح جلسة المستخدم');
@@ -569,6 +638,7 @@ async function loadTeacherDashboard() {
       
       // تحديد الأيقونة والألوان حسب حالة الحصة
       let statusIcon, statusClass, statusTitle;
+      
       if (isCurrent) {
         statusIcon = 'bi-play-circle-fill text-success';
         statusClass = 'current';
@@ -664,12 +734,105 @@ async function startAttendance(sessionId, sessionData = null) {
     }
     
     currentClass = sessionData;
+    
+    // التحقق من وجود تحضير مرسل سابقاً
+    try {
+      const submittedResult = await apiService.getSubmittedAttendance(sessionId);
+      
+      if (submittedResult.success && submittedResult.submitted) {
+        // تم إرسال التحضير سابقاً - عرض في وضع القراءة فقط
+        showPreviouslySubmittedAttendance(submittedResult);
+        return;
+      }
+    } catch (error) {
+      console.log('لم يتم العثور على تحضير سابق - متابعة بشكل طبيعي');
+    }
+    
+    // لم يتم إرسال تحضير سابقاً - السماح بالتحضير
     showPage('attendancePage');
     
   } catch (error) {
     console.error('خطأ في بدء التحضير:', error);
     showNotification('فشل في بدء التحضير: ' + error.message, 'error');
   }
+}
+
+// عرض التحضير المرسل سابقاً (وضع القراءة فقط)
+function showPreviouslySubmittedAttendance(submittedData) {
+  const { attendance_data, submitted_date, approval_status } = submittedData;
+  
+  // تحديد حالة الموافقة
+  let approvalBadge = '';
+  let approvalMessage = '';
+  
+  if (approval_status === 1) {
+    approvalBadge = '<span class="badge bg-success">تم الاعتماد</span>';
+    approvalMessage = 'تم اعتماد التحضير من قبل الإدارة';
+  } else if (approval_status === 0) {
+    approvalBadge = '<span class="badge bg-danger">مرفوض</span>';
+    approvalMessage = 'تم رفض التحضير من قبل الإدارة';
+  } else {
+    approvalBadge = '<span class="badge bg-warning">في الانتظار</span>';
+    approvalMessage = 'التحضير في انتظار اعتماد الإدارة';
+  }
+  
+  const content = `
+    <div class="container-fluid py-4">
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header bg-info text-white">
+              <h5 class="mb-0">
+                <i class="bi bi-eye me-2"></i>
+                تحضير ${currentClass.subject?.name || 'غير محدد'} - ${currentClass.grade} ${currentClass.class_name}
+              </h5>
+            </div>
+            <div class="card-body">
+              <div class="alert alert-info">
+                <h6><i class="bi bi-info-circle me-2"></i>تم إرسال التحضير سابقاً</h6>
+                <p class="mb-2">تم إرسال تحضير هذه الحصة بتاريخ: <strong>${formatDate(submitted_date)}</strong></p>
+                <p class="mb-0">حالة الاعتماد: ${approvalBadge} - ${approvalMessage}</p>
+              </div>
+              
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>اسم الطالب</th>
+                      <th>الحالة</th>
+                      <th>وقت الإرسال</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${Object.entries(attendance_data).map(([studentId, data]) => `
+                      <tr>
+                        <td>${data.student_name}</td>
+                        <td>
+                          ${data.status === 'present' 
+                            ? '<span class="badge bg-success">حاضر</span>' 
+                            : '<span class="badge bg-danger">غائب</span>'
+                          }
+                        </td>
+                        <td>${formatTime(data.submitted_at)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+              
+              <div class="mt-3">
+                <button class="btn btn-secondary" onclick="showPage('teacherDashboard')">
+                  <i class="bi bi-arrow-left me-2"></i>العودة للوحة التحكم
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('mainContent').innerHTML = content;
 }
 
 // تحميل صفحة التحضير
@@ -842,34 +1005,33 @@ async function saveAttendance() {
   }
   
   try {
-    // تحضير بيانات الحضور للإرسال
-    const attendanceList = [];
+    // تحضير بيانات الحضور للإرسال - تنسيق مطابق للباك إند
+    const attendanceObject = {};
     
     for (const studentId in attendanceData) {
-      attendanceList.push({
-        student_id: parseInt(studentId),
-        status: attendanceData[studentId],
-        attendance_date: new Date().toISOString().split('T')[0] // تاريخ اليوم
-      });
+      attendanceObject[studentId] = attendanceData[studentId];
     }
     
-    if (attendanceList.length === 0) {
+    if (Object.keys(attendanceObject).length === 0) {
       throw new Error('لا توجد بيانات حضور للحفظ');
     }
     
-    console.log('بيانات الحضور المرسلة:', {
-      class_session_id: currentClass.id,
-      attendance_data: attendanceList
-    });
+    const requestData = {
+      attendance: attendanceObject,
+      date: new Date().toISOString().split('T')[0]
+    };
     
-    const result = await apiService.submitAttendance(currentClass.id, attendanceList);
+    console.log('بيانات الحضور المرسلة:', requestData);
+    
+    const result = await apiService.submitAttendance(currentClass.id, requestData);
     
     if (result.success) {
       showNotification('تم حفظ التحضير وإرساله للإدارة بنجاح', 'success');
       
       // إحصائيات سريعة
-      const presentCount = attendanceList.filter(a => a.status === 'present').length;
-      const absentCount = attendanceList.filter(a => a.status === 'absent').length;
+      const statusValues = Object.values(attendanceObject);
+      const presentCount = statusValues.filter(status => status === 'present').length;
+      const absentCount = statusValues.filter(status => status === 'absent').length;
       
       console.log(`الحضور: ${presentCount}, الغياب: ${absentCount}`);
       
@@ -882,7 +1044,18 @@ async function saveAttendance() {
     }
   } catch (error) {
     console.error('خطأ في حفظ الحضور:', error);
-    showNotification(error.message || 'حدث خطأ أثناء حفظ التحضير', 'error');
+    
+    // التحقق إذا كان الخطأ بسبب إرسال التحضير سابقاً
+    if (error.message && error.message.includes('تم إرسال التحضير لهذه الحصة مسبقاً')) {
+      showNotification('تم إرسال التحضير لهذه الحصة مسبقاً. لا يمكن إرسال التحضير أكثر من مرة.', 'warning');
+      
+      // العودة للوحة التحكم بعد 2 ثانية
+      setTimeout(() => {
+        showPage('teacherDashboard');
+      }, 2000);
+    } else {
+      showNotification(error.message || 'حدث خطأ أثناء حفظ التحضير', 'error');
+    }
   } finally {
     // إعادة تعيين الزر
     if (saveBtn) {
@@ -944,14 +1117,14 @@ async function showAdminSection(sectionName) {
       case 'students':
         content = await getStudentsContent();
         break;
-      case 'classes':
-        content = await getClassesContent();
-        break;
       case 'subjects':
         content = await getSubjectsContent();
         break;
-      case 'grades':
-        content = await getGradesContent();
+      case 'schedules':
+        content = await getSchedulesContent();
+        break;
+      case 'class-schedules':
+        content = await getClassSchedulesContent();
         break;
       case 'attendance':
         content = getAttendanceReportsContent();
@@ -2158,6 +2331,11 @@ async function getSubjectsContent() {
 
 // محتوى تقارير الحضور
 function getAttendanceReportsContent() {
+  // تحميل البيانات الحقيقية عند عرض المحتوى
+  setTimeout(() => {
+    loadAttendanceReports();
+  }, 100);
+
   return `
     <div class="card">
       <div class="card-header">
@@ -2165,129 +2343,970 @@ function getAttendanceReportsContent() {
       </div>
       <div class="card-body">
         <div class="row mb-4">
-          <div class="col-md-3 mb-2">
-            <select class="form-control">
-              <option>جميع الصفوف</option>
-              <option>الصف الأول أ</option>
-              <option>الصف الثاني ب</option>
-              <option>الصف الثالث أ</option>
+          <div class="col-md-2 mb-2">
+            <label class="form-label">الصف</label>
+            <select class="form-control" id="reportGradeFilter">
+              <option value="">جميع الصفوف</option>
             </select>
           </div>
-          <div class="col-md-3 mb-2">
-            <input type="date" class="form-control" value="2025-09-07">
+          <div class="col-md-2 mb-2">
+            <label class="form-label">من تاريخ</label>
+            <input type="date" class="form-control" id="reportDateFrom" value="${new Date().toISOString().split('T')[0]}">
           </div>
-          <div class="col-md-3 mb-2">
-            <button class="btn btn-primary">
+          <div class="col-md-2 mb-2">
+            <label class="form-label">إلى تاريخ</label>
+            <input type="date" class="form-control" id="reportDateTo" value="${new Date().toISOString().split('T')[0]}">
+          </div>
+          <div class="col-md-2 mb-2">
+            <label class="form-label">الحالة</label>
+            <select class="form-control" id="reportStatusFilter">
+              <option value="">جميع الحالات</option>
+              <option value="present">حاضر</option>
+              <option value="absent">غائب</option>
+              <option value="late">متأخر</option>
+              <option value="excused">معذور</option>
+            </select>
+          </div>
+          <div class="col-md-2 mb-2">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-primary d-block" onclick="filterAttendanceReports()">
               <i class="bi bi-search me-1"></i>بحث
             </button>
           </div>
-          <div class="col-md-3 mb-2">
-            <button class="btn btn-success">
-              <i class="bi bi-download me-1"></i>تصدير
-            </button>
+          <div class="col-md-2 mb-2">
+            <label class="form-label">&nbsp;</label>
+            <div class="dropdown d-block">
+              <button class="btn btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="bi bi-download me-1"></i>تصدير
+              </button>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportAttendanceReport('excel')">
+                  <i class="bi bi-file-earmark-excel me-2"></i>Excel
+                </a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportAttendanceReport('pdf')">
+                  <i class="bi bi-file-earmark-pdf me-2"></i>PDF
+                </a></li>
+              </ul>
+            </div>
           </div>
         </div>
         
-        <div class="table-responsive">
-          <table class="table table-hover">
-            <thead>
-              <tr>
-                <th>اسم الطالب</th>
-                <th>الصف</th>
-                <th>الحالة</th>
-                <th>التاريخ</th>
-                <th>المعلم</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>محمد سعد</td>
-                <td>الصف الأول أ</td>
-                <td><span class="badge bg-success">حاضر</span></td>
-                <td>7 سبتمبر 2025</td>
-                <td>أحمد محمد</td>
-              </tr>
-              <tr>
-                <td>سارة أحمد</td>
-                <td>الصف الأول أ</td>
-                <td><span class="badge bg-danger">غائب</span></td>
-                <td>7 سبتمبر 2025</td>
-                <td>أحمد محمد</td>
-              </tr>
-            </tbody>
-          </table>
+        <div id="attendanceReportsLoading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">جاري التحميل...</span>
+          </div>
+          <p class="mt-2">جاري تحميل تقارير الحضور...</p>
+        </div>
+        
+        <div id="attendanceReportsTable" style="display: none;">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>اسم الطالب</th>
+                  <th>الصف</th>
+                  <th>المادة</th>
+                  <th>المعلم</th>
+                  <th>الحالة</th>
+                  <th>التاريخ</th>
+                  <th>الوقت</th>
+                  <th>الحالة</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="attendanceReportsTableBody">
+              </tbody>
+            </table>
+          </div>
+          
+          <div id="attendanceReportsPagination" class="d-flex justify-content-center mt-3">
+          </div>
+        </div>
+        
+        <div id="attendanceReportsEmpty" style="display: none;" class="text-center py-4">
+          <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+          <p class="text-muted mt-2">لا توجد سجلات حضور بالمعايير المحددة</p>
         </div>
       </div>
     </div>
   `;
+}
+
+// دالة تحميل تقارير الحضور
+async function loadAttendanceReports(filters = {}) {
+  try {
+    // إظهار حالة التحميل
+    document.getElementById('attendanceReportsLoading').style.display = 'block';
+    document.getElementById('attendanceReportsTable').style.display = 'none';
+    document.getElementById('attendanceReportsEmpty').style.display = 'none';
+    
+    // تحميل الصفوف للفلتر
+    await loadGradesForFilter();
+    
+    // استدعاء API للحصول على تقارير الحضور
+    const response = await apiService.getAttendanceReports(filters);
+    
+    if (response.success && response.data) {
+      displayAttendanceReports(response.data);
+    } else {
+      throw new Error(response.message || 'فشل في تحميل التقارير');
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل تقارير الحضور:', error);
+    showToast('فشل في تحميل تقارير الحضور', 'error');
+    
+    // إخفاء حالة التحميل وإظهار رسالة فارغة
+    document.getElementById('attendanceReportsLoading').style.display = 'none';
+    document.getElementById('attendanceReportsEmpty').style.display = 'block';
+  }
+}
+
+// دالة عرض تقارير الحضور
+function displayAttendanceReports(reports) {
+  const tableBody = document.getElementById('attendanceReportsTableBody');
+  const loadingDiv = document.getElementById('attendanceReportsLoading');
+  const tableDiv = document.getElementById('attendanceReportsTable');
+  const emptyDiv = document.getElementById('attendanceReportsEmpty');
+  
+  // إخفاء حالة التحميل
+  loadingDiv.style.display = 'none';
+  
+  if (!reports || reports.length === 0) {
+    emptyDiv.style.display = 'block';
+    tableDiv.style.display = 'none';
+    return;
+  }
+  
+  // إظهار الجدول
+  tableDiv.style.display = 'block';
+  emptyDiv.style.display = 'none';
+  
+  // تنظيف محتوى الجدول
+  tableBody.innerHTML = '';
+  
+  // إضافة البيانات للجدول
+  reports.forEach(report => {
+    const row = createAttendanceReportRow(report);
+    tableBody.appendChild(row);
+  });
+}
+
+// دالة إنشاء صف في جدول تقارير الحضور
+function createAttendanceReportRow(report) {
+  const row = document.createElement('tr');
+  
+  // تحديد لون الحالة
+  let statusBadge = '';
+  switch(report.status) {
+    case 'present':
+      statusBadge = '<span class="badge bg-success">حاضر</span>';
+      break;
+    case 'absent':
+      statusBadge = '<span class="badge bg-danger">غائب</span>';
+      break;
+    case 'late':
+      statusBadge = '<span class="badge bg-warning">متأخر</span>';
+      break;
+    case 'excused':
+      statusBadge = '<span class="badge bg-info">معذور</span>';
+      break;
+    default:
+      statusBadge = '<span class="badge bg-secondary">غير محدد</span>';
+  }
+  
+  // تحديد حالة الموافقة
+  let approvalStatus = '';
+  if (report.is_approved === 1) {
+    approvalStatus = '<span class="badge bg-success">معتمد</span>';
+  } else if (report.is_approved === 0) {
+    approvalStatus = '<span class="badge bg-danger">مرفوض</span>';
+  } else {
+    approvalStatus = '<span class="badge bg-warning">في الانتظار</span>';
+  }
+  
+  row.innerHTML = `
+    <td>${report.student_name || 'غير محدد'}</td>
+    <td>${report.grade || 'غير محدد'} ${report.class_name || ''}</td>
+    <td>${report.subject_name || 'غير محدد'}</td>
+    <td>${report.teacher_name || 'غير محدد'}</td>
+    <td>${statusBadge}</td>
+    <td>${formatDate(report.attendance_date)}</td>
+    <td>${formatTime(report.recorded_at)}</td>
+    <td>${approvalStatus}</td>
+    <td>
+      ${report.is_approved === null ? `
+        <button class="btn btn-sm btn-success me-1" onclick="approveAttendanceRecord(${report.id})">
+          <i class="bi bi-check"></i>
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="rejectAttendanceRecord(${report.id})">
+          <i class="bi bi-x"></i>
+        </button>
+      ` : ''}
+      <button class="btn btn-sm btn-outline-primary" onclick="viewAttendanceDetails(${report.id})">
+        <i class="bi bi-eye"></i>
+      </button>
+    </td>
+  `;
+  
+  return row;
+}
+
+// دالة فلترة تقارير الحضور
+async function filterAttendanceReports() {
+  const filters = {
+    grade: document.getElementById('reportGradeFilter').value,
+    date_from: document.getElementById('reportDateFrom').value,
+    date_to: document.getElementById('reportDateTo').value,
+    status: document.getElementById('reportStatusFilter').value
+  };
+  
+  // إزالة الفلاتر الفارغة
+  Object.keys(filters).forEach(key => {
+    if (!filters[key]) delete filters[key];
+  });
+  
+  await loadAttendanceReports(filters);
+}
+
+// دالة تحميل الصفوف للفلتر
+async function loadGradesForFilter() {
+  try {
+    const response = await apiService.getClasses();
+    const gradeFilter = document.getElementById('reportGradeFilter');
+    
+    if (response.success && response.data) {
+      // تنظيف القائمة
+      gradeFilter.innerHTML = '<option value="">جميع الصفوف</option>';
+      
+      // إضافة الصفوف
+      const grades = [...new Set(response.data.map(cls => cls.grade))];
+      grades.forEach(grade => {
+        const option = document.createElement('option');
+        option.value = grade;
+        option.textContent = grade;
+        gradeFilter.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل الصفوف:', error);
+  }
+}
+
+// دالة اعتماد سجل حضور
+async function approveAttendanceRecord(attendanceId) {
+  try {
+    const response = await apiService.approveAttendance(attendanceId);
+    
+    if (response.success) {
+      showToast('تم اعتماد سجل الحضور بنجاح', 'success');
+      // إعادة تحميل التقارير
+      await loadAttendanceReports();
+    } else {
+      throw new Error(response.message || 'فشل في اعتماد السجل');
+    }
+  } catch (error) {
+    console.error('خطأ في اعتماد السجل:', error);
+    showToast('فشل في اعتماد السجل: ' + error.message, 'error');
+  }
+}
+
+// دالة رفض سجل حضور
+async function rejectAttendanceRecord(attendanceId) {
+  try {
+    const response = await apiService.rejectAttendance(attendanceId);
+    
+    if (response.success) {
+      showToast('تم رفض سجل الحضور', 'warning');
+      // إعادة تحميل التقارير
+      await loadAttendanceReports();
+    } else {
+      throw new Error(response.message || 'فشل في رفض السجل');
+    }
+  } catch (error) {
+    console.error('خطأ في رفض السجل:', error);
+    showToast('فشل في رفض السجل: ' + error.message, 'error');
+  }
+}
+
+// دالة عرض تفاصيل سجل الحضور
+function viewAttendanceDetails(attendanceId) {
+  // ستكون متاحة لاحقاً
+  showToast('ميزة عرض التفاصيل ستكون متاحة قريباً', 'info');
+}
+
+// دالة تصدير تقارير الحضور
+async function exportAttendanceReport(format) {
+  try {
+    const filters = {
+      grade: document.getElementById('reportGradeFilter').value,
+      date_from: document.getElementById('reportDateFrom').value,
+      date_to: document.getElementById('reportDateTo').value,
+      status: document.getElementById('reportStatusFilter').value
+    };
+    
+    // إزالة الفلاتر الفارغة
+    Object.keys(filters).forEach(key => {
+      if (!filters[key]) delete filters[key];
+    });
+    
+    showToast('جاري تحضير التقرير...', 'info');
+    
+    // استدعاء API للتصدير
+    const response = await apiService.exportAttendanceReport(format, filters);
+    
+    if (response) {
+      // إنشاء رابط التنزيل
+      const url = window.URL.createObjectURL(response);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `attendance-report-${new Date().toISOString().split('T')[0]}.${format}`;
+      
+      document.body.appendChild(a);
+      a.click();
+      
+      // تنظيف
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      showToast('تم تنزيل التقرير بنجاح', 'success');
+    }
+  } catch (error) {
+    console.error('خطأ في تصدير التقرير:', error);
+    showToast('فشل في تصدير التقرير: ' + error.message, 'error');
+  }
+}
+
+// دوال مساعدة لتنسيق التاريخ والوقت
+function formatDate(dateString) {
+  if (!dateString) return 'غير محدد';
+  
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ar-SA', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+function formatTime(timeString) {
+  if (!timeString) return 'غير محدد';
+  
+  const date = new Date(timeString);
+  return date.toLocaleTimeString('ar-SA', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
 }
 
 // محتوى اعتماد التحضير
 function getApprovalContent() {
+  // تحميل البيانات الحقيقية عند عرض المحتوى
+  setTimeout(() => {
+    loadPendingApprovals();
+  }, 100);
+
   return `
     <div class="card">
-      <div class="card-header">
+      <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-check2-square me-2"></i>اعتماد التحضير</h5>
+        <button class="btn btn-outline-primary btn-sm" onclick="loadPendingApprovals()">
+          <i class="bi bi-arrow-clockwise me-1"></i>تحديث
+        </button>
       </div>
       <div class="card-body">
-        <div class="list-group">
-          <div class="list-group-item" id="approval-1">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h6 class="mb-1">تحضير حصة الرياضيات - الصف الأول أ</h6>
-                <p class="mb-1">المعلم: أحمد محمد</p>
-                <small class="text-muted">الوقت: 08:00 - 09:00 | التاريخ: 7 سبتمبر 2025</small>
-              </div>
-              <div>
-                <button class="btn btn-success btn-sm me-1" data-approval-id="1">
-                  <i class="bi bi-check"></i> اعتماد
-                </button>
-                <button class="btn btn-outline-danger btn-sm">
-                  <i class="bi bi-x"></i> رفض
-                </button>
-              </div>
-            </div>
+        <!-- فلاتر -->
+        <div class="row mb-3">
+          <div class="col-md-3">
+            <label class="form-label">التاريخ</label>
+            <input type="date" class="form-control" id="approvalDateFilter" value="${new Date().toISOString().split('T')[0]}">
           </div>
-          <div class="list-group-item" id="approval-2">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h6 class="mb-1">تحضير حصة العلوم - الصف الثالث أ</h6>
-                <p class="mb-1">المعلم: فاطمة علي</p>
-                <small class="text-muted">الوقت: 09:00 - 10:00 | التاريخ: 7 سبتمبر 2025</small>
-              </div>
-              <div>
-                <button class="btn btn-success btn-sm me-1" data-approval-id="2">
-                  <i class="bi bi-check"></i> اعتماد
-                </button>
-                <button class="btn btn-outline-danger btn-sm">
-                  <i class="bi bi-x"></i> رفض
-                </button>
-              </div>
-            </div>
+          <div class="col-md-3">
+            <label class="form-label">المعلم</label>
+            <select class="form-control" id="approvalTeacherFilter">
+              <option value="">جميع المعلمين</option>
+            </select>
           </div>
+          <div class="col-md-3">
+            <label class="form-label">الصف</label>
+            <select class="form-control" id="approvalGradeFilter">
+              <option value="">جميع الصفوف</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-primary d-block" onclick="filterPendingApprovals()">
+              <i class="bi bi-search me-1"></i>فلترة
+            </button>
+          </div>
+        </div>
+        
+        <!-- حالة التحميل -->
+        <div id="approvalsLoading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">جاري التحميل...</span>
+          </div>
+          <p class="mt-2">جاري تحميل التحضير المطلوب اعتماده...</p>
+        </div>
+        
+        <!-- قائمة التحضير -->
+        <div id="approvalsList" style="display: none;">
+          <div class="list-group" id="approvalsListGroup">
+          </div>
+        </div>
+        
+        <!-- رسالة فارغة -->
+        <div id="approvalsEmpty" style="display: none;" class="text-center py-4">
+          <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+          <p class="text-muted mt-2">لا يوجد تحضير في انتظار الاعتماد</p>
         </div>
       </div>
     </div>
   `;
 }
 
-// اعتماد التحضير
-function approveAttendance(attendanceId) {
-  console.log('اعتماد التحضير:', attendanceId);
-  showNotification('تم اعتماد التحضير بنجاح وإرسال الرسائل لأولياء الأمور', 'success');
-  
-  // إخفاء العنصر المعتمد
-  setTimeout(() => {
-    const approvalItem = document.getElementById(`approval-${attendanceId}`);
-    if (approvalItem) {
-      approvalItem.style.opacity = '0.5';
-      approvalItem.innerHTML = `
-        <div class="text-center text-success p-3">
-          <i class="bi bi-check-circle me-2"></i>تم الاعتماد والإرسال
-        </div>
-      `;
+// دالة تحميل التحضير المطلوب اعتماده
+async function loadPendingApprovals(filters = {}) {
+  try {
+    // إظهار حالة التحميل
+    document.getElementById('approvalsLoading').style.display = 'block';
+    document.getElementById('approvalsList').style.display = 'none';
+    document.getElementById('approvalsEmpty').style.display = 'none';
+    
+    // تحميل المعلمين والصفوف للفلاتر
+    await loadFiltersForApprovals();
+    
+    // استدعاء API للحصول على التحضير المطلوب اعتماده
+    const response = await apiService.getPendingApprovals();
+    
+    if (response.success && response.data) {
+      displayPendingApprovals(response.data);
+    } else {
+      throw new Error(response.message || 'فشل في تحميل التحضير');
     }
-  }, 1000);
+  } catch (error) {
+    console.error('خطأ في تحميل التحضير المطلوب اعتماده:', error);
+    showToast('فشل في تحميل التحضير المطلوب اعتماده', 'error');
+    
+    // إخفاء حالة التحميل وإظهار رسالة فارغة
+    document.getElementById('approvalsLoading').style.display = 'none';
+    document.getElementById('approvalsEmpty').style.display = 'block';
+  }
+}
+
+// دالة عرض التحضير المطلوب اعتماده
+function displayPendingApprovals(approvals) {
+  const listGroup = document.getElementById('approvalsListGroup');
+  const loadingDiv = document.getElementById('approvalsLoading');
+  const listDiv = document.getElementById('approvalsList');
+  const emptyDiv = document.getElementById('approvalsEmpty');
+  
+  // إخفاء حالة التحميل
+  loadingDiv.style.display = 'none';
+  
+  if (!approvals || approvals.length === 0) {
+    emptyDiv.style.display = 'block';
+    listDiv.style.display = 'none';
+    return;
+  }
+  
+  // إظهار القائمة
+  listDiv.style.display = 'block';
+  emptyDiv.style.display = 'none';
+  
+  // تنظيف محتوى القائمة
+  listGroup.innerHTML = '';
+  
+  // إضافة البيانات للقائمة
+  approvals.forEach(approval => {
+    const item = createApprovalItem(approval);
+    listGroup.appendChild(item);
+  });
+}
+
+// دالة إنشاء عنصر في قائمة التحضير
+function createApprovalItem(approval) {
+  const item = document.createElement('div');
+  item.className = 'list-group-item';
+  item.id = `approval-${approval.id}`;
+  item.setAttribute('data-session', approval.class_session_id);
+  item.setAttribute('data-date', approval.attendance_date);
+  
+  // استخدام البيانات الجديدة من API
+  const presentCount = approval.present_count || 0;
+  const absentCount = approval.absent_count || 0;
+  const lateCount = approval.late_count || 0;
+  const excusedCount = approval.excused_count || 0;
+  const totalCount = approval.student_count || (presentCount + absentCount + lateCount + excusedCount);
+  
+  item.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center">
+      <div class="flex-grow-1">
+        <h6 class="mb-1">
+          تحضير حصة ${approval.subject_name || 'غير محدد'} - ${approval.grade || 'غير محدد'} ${approval.class_name || ''}
+        </h6>
+        <p class="mb-1">
+          <strong>المعلم:</strong> ${approval.teacher_name || 'غير محدد'}
+        </p>
+        <div class="row">
+          <div class="col-md-6">
+            <small class="text-muted">
+              <i class="bi bi-calendar me-1"></i>التاريخ: ${formatDate(approval.attendance_date)}
+            </small>
+          </div>
+          <div class="col-md-6">
+            <small class="text-muted">
+              <i class="bi bi-clock me-1"></i>وقت التسجيل: ${formatTime(approval.recorded_at)}
+            </small>
+          </div>
+        </div>
+        <div class="mt-2">
+          <span class="badge bg-success me-1">حاضر: ${presentCount}</span>
+          <span class="badge bg-danger me-1">غائب: ${absentCount}</span>
+          ${lateCount > 0 ? `<span class="badge bg-warning me-1">متأخر: ${lateCount}</span>` : ''}
+          ${excusedCount > 0 ? `<span class="badge bg-secondary me-1">معذور: ${excusedCount}</span>` : ''}
+          <span class="badge bg-info">المجموع: ${totalCount}</span>
+        </div>
+      </div>
+      <div class="ms-3">
+        <button class="btn btn-success btn-sm me-1" onclick="approveAttendanceSession(${approval.class_session_id}, '${approval.attendance_date}')">
+          <i class="bi bi-check"></i> اعتماد
+        </button>
+        <button class="btn btn-outline-danger btn-sm me-1" onclick="rejectAttendanceSession(${approval.class_session_id}, '${approval.attendance_date}')">
+          <i class="bi bi-x"></i> رفض
+        </button>
+        <button class="btn btn-outline-primary btn-sm" onclick="viewAttendanceSessionDetails(${approval.id})">
+          <i class="bi bi-eye"></i> تفاصيل
+        </button>
+      </div>
+    </div>
+  `;
+  
+  return item;
+}
+
+// دالة تحميل الفلاتر للاعتماد
+async function loadFiltersForApprovals() {
+  try {
+    // تحميل المعلمين
+    const teachersResponse = await apiService.getTeachers();
+    const teacherFilter = document.getElementById('approvalTeacherFilter');
+    
+    if (teachersResponse.success && teachersResponse.data) {
+      teacherFilter.innerHTML = '<option value="">جميع المعلمين</option>';
+      teachersResponse.data.forEach(teacher => {
+        const option = document.createElement('option');
+        option.value = teacher.id;
+        option.textContent = teacher.name;
+        teacherFilter.appendChild(option);
+      });
+    }
+    
+    // تحميل الصفوف
+    const classesResponse = await apiService.getClasses();
+    const gradeFilter = document.getElementById('approvalGradeFilter');
+    
+    if (classesResponse.success && classesResponse.data) {
+      gradeFilter.innerHTML = '<option value="">جميع الصفوف</option>';
+      const grades = [...new Set(classesResponse.data.map(cls => cls.grade))];
+      grades.forEach(grade => {
+        const option = document.createElement('option');
+        option.value = grade;
+        option.textContent = grade;
+        gradeFilter.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل الفلاتر:', error);
+  }
+}
+
+// دالة فلترة التحضير المطلوب اعتماده
+async function filterPendingApprovals() {
+  const filters = {
+    date: document.getElementById('approvalDateFilter').value,
+    teacher_id: document.getElementById('approvalTeacherFilter').value,
+    grade: document.getElementById('approvalGradeFilter').value
+  };
+  
+  // إزالة الفلاتر الفارغة
+  Object.keys(filters).forEach(key => {
+    if (!filters[key]) delete filters[key];
+  });
+  
+  await loadPendingApprovals(filters);
+}
+
+// دالة اعتماد جلسة حضور
+async function approveAttendanceSession(sessionId, date) {
+  if (!confirm('هل تريد اعتماد هذا التحضير؟ سيتم إرسال إشعارات لأولياء الأمور.')) {
+    return;
+  }
+  
+  try {
+    const response = await apiService.approveSession(sessionId, date);
+    
+    if (response.success) {
+      showToast('تم اعتماد التحضير بنجاح وإرسال الإشعارات', 'success');
+      
+      // تحديث العنصر في القائمة
+      const approvalItem = document.querySelector(`[id*="approval-"][data-session="${sessionId}"][data-date="${date}"]`);
+      if (approvalItem) {
+        approvalItem.style.opacity = '0.7';
+        approvalItem.innerHTML = `
+          <div class="text-center text-success p-3">
+            <i class="bi bi-check-circle me-2"></i>تم الاعتماد وإرسال الإشعارات بنجاح
+          </div>
+        `;
+        
+        // إزالة العنصر بعد 3 ثواني
+        setTimeout(() => {
+          approvalItem.remove();
+          
+          // التحقق من وجود عناصر أخرى
+          const remainingItems = document.querySelectorAll('#approvalsListGroup .list-group-item');
+          if (remainingItems.length === 0) {
+            document.getElementById('approvalsList').style.display = 'none';
+            document.getElementById('approvalsEmpty').style.display = 'block';
+          }
+        }, 3000);
+      } else {
+        // إعادة تحميل القائمة
+        loadPendingApprovals();
+      }
+    } else {
+      throw new Error(response.message || 'فشل في اعتماد التحضير');
+    }
+  } catch (error) {
+    console.error('خطأ في اعتماد التحضير:', error);
+    showToast('فشل في اعتماد التحضير: ' + error.message, 'error');
+  }
+}
+
+// دالة رفض جلسة حضور
+async function rejectAttendanceSession(sessionId, date) {
+  const reason = prompt('سبب الرفض (اختياري):');
+  if (reason === null) return; // المستخدم ألغى العملية
+  
+  try {
+    const response = await apiService.rejectSession(sessionId, date, reason);
+    
+    if (response.success) {
+      showToast('تم رفض التحضير', 'warning');
+      
+      // تحديث العنصر في القائمة
+      const approvalItem = document.querySelector(`[id*="approval-"][data-session="${sessionId}"][data-date="${date}"]`);
+      if (approvalItem) {
+        approvalItem.style.opacity = '0.7';
+        approvalItem.innerHTML = `
+          <div class="text-center text-warning p-3">
+            <i class="bi bi-x-circle me-2"></i>تم رفض التحضير
+            ${reason ? `<br><small>السبب: ${reason}</small>` : ''}
+          </div>
+        `;
+        
+        // إزالة العنصر بعد 3 ثواني
+        setTimeout(() => {
+          approvalItem.remove();
+          
+          // التحقق من وجود عناصر أخرى
+          const remainingItems = document.querySelectorAll('#approvalsListGroup .list-group-item');
+          if (remainingItems.length === 0) {
+            document.getElementById('approvalsList').style.display = 'none';
+            document.getElementById('approvalsEmpty').style.display = 'block';
+          }
+        }, 3000);
+      } else {
+        // إعادة تحميل القائمة
+        loadPendingApprovals();
+      }
+    } else {
+      throw new Error(response.message || 'فشل في رفض التحضير');
+    }
+  } catch (error) {
+    console.error('خطأ في رفض التحضير:', error);
+    showToast('فشل في رفض التحضير: ' + error.message, 'error');
+  }
+}
+
+// دالة عرض تفاصيل جلسة الحضور
+async function viewAttendanceSessionDetails(attendanceId) {
+  try {
+    showToast('جاري تحميل التفاصيل...', 'info');
+    
+    const response = await apiService.getAttendanceSessionDetails(attendanceId);
+    
+    if (response.success && response.data) {
+      showAttendanceDetailsModal(response.data);
+    } else {
+      throw new Error(response.message || 'فشل في تحميل التفاصيل');
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل تفاصيل الجلسة:', error);
+    showToast('فشل في تحميل تفاصيل الجلسة: ' + error.message, 'error');
+  }
+}
+
+// دالة عرض modal تفاصيل الحضور
+function showAttendanceDetailsModal(sessionData) {
+  const { session_info, students, statistics } = sessionData;
+  
+  // تجميع الطلاب حسب الحالة
+  const presentStudents = students.filter(s => s.status === 'present');
+  const absentStudents = students.filter(s => s.status === 'absent');
+  const lateStudents = students.filter(s => s.status === 'late');
+  const excusedStudents = students.filter(s => s.status === 'excused');
+  
+  const modalHtml = `
+    <div class="modal fade" id="attendanceDetailsModal" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-clipboard-data me-2"></i>
+              تفاصيل تحضير ${session_info.subject_name} - ${session_info.grade} ${session_info.class_name}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <!-- معلومات الجلسة -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>معلومات الجلسة</h6>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <p><strong>المعلم:</strong> ${session_info.teacher_name}</p>
+                    <p><strong>المادة:</strong> ${session_info.subject_name}</p>
+                    <p><strong>الصف:</strong> ${session_info.grade} ${session_info.class_name}</p>
+                  </div>
+                  <div class="col-md-6">
+                    <p><strong>التاريخ:</strong> ${formatDate(session_info.attendance_date)}</p>
+                    <p><strong>وقت التسجيل:</strong> ${formatTime(session_info.recorded_at)}</p>
+                    <p><strong>الحالة:</strong> ${getApprovalStatusBadge(session_info.is_approved)}</p>
+                  </div>
+                </div>
+                ${session_info.rejection_reason ? `
+                  <div class="alert alert-warning mt-2">
+                    <strong>سبب الرفض:</strong> ${session_info.rejection_reason}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+            
+            <!-- الإحصائيات -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-graph-up me-2"></i>إحصائيات الحضور</h6>
+              </div>
+              <div class="card-body">
+                <div class="row text-center">
+                  <div class="col-md-2">
+                    <div class="stat-box bg-info">
+                      <h4>${statistics.total_students}</h4>
+                      <small>إجمالي الطلاب</small>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="stat-box bg-success">
+                      <h4>${statistics.present_count}</h4>
+                      <small>حاضر</small>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="stat-box bg-danger">
+                      <h4>${statistics.absent_count}</h4>
+                      <small>غائب</small>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="stat-box bg-warning">
+                      <h4>${statistics.late_count}</h4>
+                      <small>متأخر</small>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="stat-box bg-secondary">
+                      <h4>${statistics.excused_count}</h4>
+                      <small>معذور</small>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="stat-box bg-primary">
+                      <h4>${statistics.attendance_rate}%</h4>
+                      <small>معدل الحضور</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- قوائم الطلاب -->
+            <div class="row">
+              <!-- الطلاب الحاضرون -->
+              ${presentStudents.length > 0 ? `
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header bg-success text-white">
+                      <h6 class="mb-0"><i class="bi bi-check-circle me-2"></i>الطلاب الحاضرون (${presentStudents.length})</h6>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                      ${createStudentsList(presentStudents, 'success')}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+              
+              <!-- الطلاب الغائبون -->
+              ${absentStudents.length > 0 ? `
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header bg-danger text-white">
+                      <h6 class="mb-0"><i class="bi bi-x-circle me-2"></i>الطلاب الغائبون (${absentStudents.length})</h6>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                      ${createStudentsList(absentStudents, 'danger')}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+              
+              <!-- الطلاب المتأخرون -->
+              ${lateStudents.length > 0 ? `
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                      <h6 class="mb-0"><i class="bi bi-clock me-2"></i>الطلاب المتأخرون (${lateStudents.length})</h6>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                      ${createStudentsList(lateStudents, 'warning')}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+              
+              <!-- الطلاب المعذورون -->
+              ${excusedStudents.length > 0 ? `
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                      <h6 class="mb-0"><i class="bi bi-shield-check me-2"></i>الطلاب المعذورون (${excusedStudents.length})</h6>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                      ${createStudentsList(excusedStudents, 'secondary')}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+            <button type="button" class="btn btn-primary" onclick="exportSessionReport(${session_info.id}, '${session_info.attendance_date}')">
+              <i class="bi bi-download me-1"></i>تصدير التقرير
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة المودال القديم إذا كان موجوداً
+  const oldModal = document.getElementById('attendanceDetailsModal');
+  if (oldModal) {
+    oldModal.remove();
+  }
+  
+  // إضافة المودال الجديد
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // إضافة CSS للإحصائيات
+  addStatsCSS();
+  
+  // عرض المودال
+  const modal = new bootstrap.Modal(document.getElementById('attendanceDetailsModal'));
+  modal.show();
+}
+
+// اعتماد التحضير (الدالة القديمة للتوافق)
+function approveAttendance(attendanceId) {
+  approveAttendanceSession(attendanceId);
+}
+
+// دالة إنشاء قائمة الطلاب
+function createStudentsList(students, badgeType) {
+  return students.map(student => `
+    <div class="d-flex justify-content-between align-items-center mb-2 p-2 border-bottom">
+      <div>
+        <strong>${student.name}</strong>
+        ${student.national_id ? `<br><small class="text-muted">رقم الهوية: ${student.national_id}</small>` : ''}
+        ${student.notes ? `<br><small class="text-muted">ملاحظة: ${student.notes}</small>` : ''}
+      </div>
+      <div>
+        <span class="badge bg-${badgeType}">${getStatusText(student.status)}</span>
+        <br><small class="text-muted">${formatTime(student.recorded_at)}</small>
+      </div>
+    </div>
+  `).join('');
+}
+
+// دالة الحصول على نص الحالة
+function getStatusText(status) {
+  const statusTexts = {
+    'present': 'حاضر',
+    'absent': 'غائب',
+    'late': 'متأخر',
+    'excused': 'معذور'
+  };
+  return statusTexts[status] || status;
+}
+
+// دالة الحصول على شارة حالة الموافقة
+function getApprovalStatusBadge(isApproved) {
+  if (isApproved === 1) {
+    return '<span class="badge bg-success">معتمد</span>';
+  } else if (isApproved === 0) {
+    return '<span class="badge bg-danger">مرفوض</span>';
+  } else {
+    return '<span class="badge bg-warning">في الانتظار</span>';
+  }
+}
+
+// دالة إضافة CSS للإحصائيات
+function addStatsCSS() {
+  if (!document.getElementById('statsCSS')) {
+    const style = document.createElement('style');
+    style.id = 'statsCSS';
+    style.textContent = `
+      .stat-box {
+        padding: 15px;
+        border-radius: 8px;
+        color: white;
+        margin-bottom: 10px;
+      }
+      .stat-box h4 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: bold;
+      }
+      .stat-box small {
+        font-size: 0.9rem;
+        opacity: 0.9;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+// دالة تصدير تقرير الجلسة
+function exportSessionReport(sessionId, date) {
+  const filters = {
+    class_session_id: sessionId,
+    date: date
+  };
+  exportAttendanceReport('excel', filters);
 }
 
 // تسجيل الخروج
@@ -2806,10 +3825,12 @@ async function handleAddClass(event) {
     day: document.getElementById('classDay').value,
     start_time: document.getElementById('classStartTime').value,
     end_time: document.getElementById('classEndTime').value,
-    period_number: document.getElementById('classPeriodNumber').value
+    period_number: document.getElementById('classPeriodNumber').value,
+    schedule_id: document.getElementById('selectedScheduleId').value || null,
+    notes: document.getElementById('classNotes').value.trim() || null
   };
   
-  // التحقق من صحة البيانات
+  // التحقق من البيانات المطلوبة فقط
   if (!formData.teacher_id) {
     showNotification('يجب اختيار المعلم', 'error');
     return;
@@ -2820,31 +3841,7 @@ async function handleAddClass(event) {
     return;
   }
   
-  if (!formData.grade || formData.grade.length < 2) {
-    showNotification('اسم الصف مطلوب', 'error');
-    return;
-  }
-  
-  if (!formData.class_name) {
-    showNotification('اسم الشعبة مطلوب', 'error');
-    return;
-  }
-  
-  if (!formData.day) {
-    showNotification('يجب اختيار اليوم', 'error');
-    return;
-  }
-  
-  if (!formData.start_time || !formData.end_time) {
-    showNotification('يجب تحديد وقت البداية والنهاية', 'error');
-    return;
-  }
-  
-  // التحقق من أن وقت النهاية أكبر من وقت البداية
-  if (formData.start_time >= formData.end_time) {
-    showNotification('وقت النهاية يجب أن يكون أكبر من وقت البداية', 'error');
-    return;
-  }
+  // البيانات الأخرى مضمونة لأنها مملوءة تلقائياً
   
   const submitBtn = event.target.querySelector('button[type="submit"]');
   const originalText = submitBtn.innerHTML;
@@ -2862,11 +3859,13 @@ async function handleAddClass(event) {
       const modal = bootstrap.Modal.getInstance(document.getElementById('addClassModal'));
       modal.hide();
       
-      // إعادة تحميل قائمة الحصص
-      showAdminSection('classes');
+      // إعادة تحميل الجدول
+      showClassSchedule(formData.grade, formData.class_name);
       
-      // إعادة تعيين النموذج
-      addClassForm.reset();
+      // مسح الحقول القابلة للتعديل فقط
+      document.getElementById('classTeacherId').value = '';
+      document.getElementById('classSubjectId').value = '';
+      document.getElementById('classNotes').value = '';
     } else {
       throw new Error(result.message || 'فشل في إضافة الحصة');
     }
@@ -3801,9 +4800,965 @@ function getDayIndex(dayName) {
     return days[dayName] || 0;
 }
 
+// ==================== إدارة التوقيتات ====================
+
+// محتوى إدارة التوقيتات
+async function getSchedulesContent() {
+  try {
+    const result = await apiService.getSchedules();
+    let schedulesHtml = '';
+    
+    if (result.success && result.data.length > 0) {
+      result.data.forEach(schedule => {
+        const periodsCount = schedule.periods ? schedule.periods.length : 0;
+        const statusBadge = schedule.is_active ? 
+          '<span class="badge bg-success">مفعل</span>' : 
+          '<span class="badge bg-secondary">غير مفعل</span>';
+        
+        schedulesHtml += `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <h5 class="card-title">${schedule.name}</h5>
+                  ${statusBadge}
+                </div>
+                <p class="card-text text-muted mb-2">
+                  <small>
+                    <i class="bi bi-calendar me-1"></i>${schedule.type === 'winter' ? 'شتوي' : schedule.type === 'summer' ? 'صيفي' : 'مخصص'}
+                    ${schedule.target_level ? ` • ${schedule.target_level}` : ''}
+                  </small>
+                </p>
+                <p class="card-text text-muted mb-3">
+                  <small><i class="bi bi-clock me-1"></i>${periodsCount} فترة</small>
+                </p>
+                <div class="d-flex gap-1">
+                  ${!schedule.is_active ? `
+                    <button class="btn btn-sm btn-success" onclick="activateSchedule(${schedule.id})" title="تفعيل">
+                      <i class="bi bi-check-circle"></i>
+                    </button>
+                  ` : ''}
+                  <button class="btn btn-sm btn-primary" onclick="viewScheduleDetails(${schedule.id})" title="عرض التفاصيل">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                  <button class="btn btn-sm btn-warning" onclick="editSchedule(${schedule.id})" title="تعديل">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteSchedule(${schedule.id})" title="حذف">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      schedulesHtml = `
+        <div class="col-12 text-center py-5">
+          <i class="bi bi-clock display-4 text-muted"></i>
+          <p class="mt-3 text-muted">لا توجد توقيتات مسجلة</p>
+          <button class="btn btn-primary" onclick="showCreateScheduleModal()">
+            <i class="bi bi-plus me-2"></i>إنشاء توقيت جديد
+          </button>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4><i class="bi bi-clock me-2"></i>إدارة التوقيتات</h4>
+        <div>
+          <button class="btn btn-success me-2" onclick="showCreateScheduleModal()">
+            <i class="bi bi-plus me-2"></i>توقيت جديد
+          </button>
+          <button class="btn btn-outline-primary" onclick="showScheduleTemplatesModal()">
+            <i class="bi bi-file-earmark-text me-2"></i>القوالب
+          </button>
+        </div>
+      </div>
+
+      <div class="row">
+        ${schedulesHtml}
+      </div>
+    `;
+  } catch (error) {
+    return `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ أثناء تحميل التوقيتات: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// محتوى إدارة جداول الفصول
+async function getClassSchedulesContent() {
+  try {
+    const result = await apiService.getClasses();
+    let classesHtml = '';
+    
+    if (result.success && result.data.length > 0) {
+      result.data.forEach(classItem => {
+        classesHtml += `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card">
+              <div class="card-body">
+                <h5 class="card-title">${classItem.name}</h5>
+                <p class="card-text text-muted">
+                  <i class="bi bi-people me-1"></i>${classItem.students_count} طالب
+                </p>
+                <button class="btn btn-primary w-100" onclick="showClassSchedule('${classItem.grade}', '${classItem.class_name}')">
+                  <i class="bi bi-table me-2"></i>عرض الجدول
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      classesHtml = `
+        <div class="col-12 text-center py-5">
+          <i class="bi bi-building display-4 text-muted"></i>
+          <p class="mt-3 text-muted">لا توجد فصول مسجلة</p>
+          <small class="text-muted">قم بإضافة طلاب أولاً لظهور الفصول</small>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4><i class="bi bi-table me-2"></i>جداول الفصول</h4>
+      </div>
+
+      <div class="row">
+        ${classesHtml}
+      </div>
+    `;
+  } catch (error) {
+    return `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ أثناء تحميل الفصول: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// تفعيل توقيت
+async function activateSchedule(scheduleId) {
+  if (!confirm('هل أنت متأكد من تفعيل هذا التوقيت؟')) {
+    return;
+  }
+  
+  try {
+    const result = await apiService.activateSchedule(scheduleId);
+    
+    if (result.success) {
+      showNotification('تم تفعيل التوقيت بنجاح', 'success');
+      showAdminSection('schedules'); // إعادة تحميل المحتوى
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء تفعيل التوقيت', 'error');
+  }
+}
+
+// عرض تفاصيل توقيت
+async function viewScheduleDetails(scheduleId) {
+  try {
+    const result = await apiService.getScheduleDetails(scheduleId);
+    
+    if (result.success) {
+      const schedule = result.data;
+      let periodsHtml = '';
+      
+      if (schedule.periods && schedule.periods.length > 0) {
+        schedule.periods.forEach(period => {
+          periodsHtml += `
+            <tr>
+              <td>${period.period_number}</td>
+              <td>${period.period_name || 'حصة ' + period.period_number}</td>
+              <td>${period.start_time}</td>
+              <td>${period.end_time}</td>
+              <td>
+                ${period.is_break ? 
+                  '<span class="badge bg-warning">فسحة</span>' : 
+                  '<span class="badge bg-primary">حصة</span>'
+                }
+              </td>
+            </tr>
+          `;
+        });
+      }
+      
+      const modalHtml = `
+        <div class="modal fade" id="scheduleDetailsModal" tabindex="-1">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">تفاصيل التوقيت: ${schedule.name}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <div class="row mb-3">
+                  <div class="col-md-6">
+                    <strong>النوع:</strong> ${schedule.type === 'winter' ? 'شتوي' : schedule.type === 'summer' ? 'صيفي' : 'مخصص'}
+                  </div>
+                  <div class="col-md-6">
+                    <strong>الحالة:</strong> 
+                    ${schedule.is_active ? 
+                      '<span class="badge bg-success">مفعل</span>' : 
+                      '<span class="badge bg-secondary">غير مفعل</span>'
+                    }
+                  </div>
+                </div>
+                ${schedule.target_level ? `
+                  <div class="row mb-3">
+                    <div class="col-12">
+                      <strong>المرحلة المستهدفة:</strong> ${schedule.target_level}
+                    </div>
+                  </div>
+                ` : ''}
+                ${schedule.description ? `
+                  <div class="row mb-3">
+                    <div class="col-12">
+                      <strong>الوصف:</strong> ${schedule.description}
+                    </div>
+                  </div>
+                ` : ''}
+                
+                <h6>الفترات الزمنية:</h6>
+                <div class="table-responsive">
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>رقم الفترة</th>
+                        <th>اسم الفترة</th>
+                        <th>وقت البداية</th>
+                        <th>وقت النهاية</th>
+                        <th>النوع</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${periodsHtml || '<tr><td colspan="5" class="text-center">لا توجد فترات محددة</td></tr>'}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                ${!schedule.is_active ? `
+                  <button type="button" class="btn btn-success" onclick="activateSchedule(${schedule.id}); bootstrap.Modal.getInstance(document.getElementById('scheduleDetailsModal')).hide();">
+                    <i class="bi bi-check-circle me-2"></i>تفعيل
+                  </button>
+                ` : ''}
+                <button type="button" class="btn btn-warning" onclick="editSchedule(${schedule.id})">
+                  <i class="bi bi-pencil me-2"></i>تعديل
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // إزالة المودال السابق إن وجد
+      const existingModal = document.getElementById('scheduleDetailsModal');
+      if (existingModal) {
+        existingModal.remove();
+      }
+      
+      // إضافة المودال الجديد
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      
+      // إظهار المودال
+      const modal = new bootstrap.Modal(document.getElementById('scheduleDetailsModal'));
+      modal.show();
+    }
+  } catch (error) {
+    showNotification('حدث خطأ أثناء جلب تفاصيل التوقيت: ' + error.message, 'error');
+  }
+}
+
+// تعديل توقيت
+async function editSchedule(scheduleId) {
+  // سيتم تنفيذها لاحقاً
+  showNotification('هذه الميزة قيد التطوير', 'info');
+}
+
+// إظهار مودال إنشاء توقيت جديد
+async function showCreateScheduleModal() {
+  const modalHtml = `
+    <div class="modal fade" id="createScheduleModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">إنشاء توقيت جديد</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="createScheduleForm">
+            <div class="modal-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">اسم التوقيت</label>
+                    <input type="text" class="form-control" id="scheduleName" required placeholder="مثال: التوقيت الشتوي">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">نوع التوقيت</label>
+                    <select class="form-control" id="scheduleType" required>
+                      <option value="">اختر النوع</option>
+                      <option value="winter">شتوي</option>
+                      <option value="summer">صيفي</option>
+                      <option value="custom">مخصص</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">المرحلة المستهدفة (اختياري)</label>
+                    <input type="text" class="form-control" id="scheduleTargetLevel" placeholder="مثال: الابتدائية">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">الوصف (اختياري)</label>
+                    <input type="text" class="form-control" id="scheduleDescription" placeholder="وصف مختصر للتوقيت">
+                  </div>
+                </div>
+              </div>
+              
+              <hr>
+              
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6>الفترات الزمنية</h6>
+                <button type="button" class="btn btn-sm btn-primary" onclick="addSchedulePeriod()">
+                  <i class="bi bi-plus me-1"></i>إضافة فترة
+                </button>
+              </div>
+              
+              <div id="schedulePeriodsContainer">
+                <!-- سيتم إضافة الفترات هنا -->
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+              <button type="submit" class="btn btn-primary">إنشاء التوقيت</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة المودال السابق إن وجد
+  const existingModal = document.getElementById('createScheduleModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // إضافة المودال الجديد
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // إضافة مستمع للنموذج
+  document.getElementById('createScheduleForm').addEventListener('submit', handleCreateSchedule);
+  
+  // إضافة فترة افتراضية
+  addSchedulePeriod();
+  
+  // إظهار المودال
+  const modal = new bootstrap.Modal(document.getElementById('createScheduleModal'));
+  modal.show();
+}
+
+// إضافة فترة جديدة لنموذج التوقيت
+function addSchedulePeriod() {
+  const container = document.getElementById('schedulePeriodsContainer');
+  const periodsCount = container.children.length;
+  const periodNumber = periodsCount + 1;
+  
+  const periodHtml = `
+    <div class="period-item border rounded p-3 mb-3" data-period="${periodNumber}">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">الفترة ${periodNumber}</h6>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePeriod(this)">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label class="form-label">اسم الفترة</label>
+            <input type="text" class="form-control" name="period_name[]" placeholder="مثال: الحصة الأولى">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label class="form-label">نوع الفترة</label>
+            <select class="form-control" name="is_break[]" onchange="toggleBreakFields(this)">
+              <option value="0">حصة دراسية</option>
+              <option value="1">فسحة</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div class="row">
+        <div class="col-md-4">
+          <div class="mb-3">
+            <label class="form-label">وقت البداية</label>
+            <input type="time" class="form-control" name="start_time[]" required>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="mb-3">
+            <label class="form-label">وقت النهاية</label>
+            <input type="time" class="form-control" name="end_time[]" required>
+          </div>
+        </div>
+        <div class="col-md-4 break-duration" style="display: none;">
+          <div class="mb-3">
+            <label class="form-label">مدة الفسحة (دقيقة)</label>
+            <input type="number" class="form-control" name="break_duration[]" min="1" max="60">
+          </div>
+        </div>
+      </div>
+      
+      <input type="hidden" name="period_number[]" value="${periodNumber}">
+    </div>
+  `;
+  
+  container.insertAdjacentHTML('beforeend', periodHtml);
+}
+
+// إزالة فترة
+function removePeriod(button) {
+  const periodItem = button.closest('.period-item');
+  periodItem.remove();
+  updatePeriodNumbers();
+}
+
+// تحديث أرقام الفترات
+function updatePeriodNumbers() {
+  const container = document.getElementById('schedulePeriodsContainer');
+  const periods = container.children;
+  
+  for (let i = 0; i < periods.length; i++) {
+    const period = periods[i];
+    const periodNumber = i + 1;
+    
+    period.dataset.period = periodNumber;
+    period.querySelector('h6').textContent = `الفترة ${periodNumber}`;
+    period.querySelector('input[name="period_number[]"]').value = periodNumber;
+  }
+}
+
+// تفعيل/إلغاء حقول الفسحة
+function toggleBreakFields(select) {
+  const periodItem = select.closest('.period-item');
+  const breakDurationField = periodItem.querySelector('.break-duration');
+  
+  if (select.value === '1') {
+    breakDurationField.style.display = 'block';
+    breakDurationField.querySelector('input').required = true;
+  } else {
+    breakDurationField.style.display = 'none';
+    breakDurationField.querySelector('input').required = false;
+  }
+}
+
+// معالجة إنشاء التوقيت
+async function handleCreateSchedule(event) {
+  event.preventDefault();
+  
+  const formData = new FormData(event.target);
+  const scheduleData = {
+    name: formData.get('scheduleName'),
+    type: formData.get('scheduleType'),
+    target_level: formData.get('scheduleTargetLevel'),
+    description: formData.get('scheduleDescription'),
+    periods: []
+  };
+  
+  // جمع بيانات الفترات
+  const periodNumbers = formData.getAll('period_number[]');
+  const periodNames = formData.getAll('period_name[]');
+  const startTimes = formData.getAll('start_time[]');
+  const endTimes = formData.getAll('end_time[]');
+  const isBreaks = formData.getAll('is_break[]');
+  const breakDurations = formData.getAll('break_duration[]');
+  
+  for (let i = 0; i < periodNumbers.length; i++) {
+    scheduleData.periods.push({
+      period_number: parseInt(periodNumbers[i]),
+      period_name: periodNames[i] || null,
+      start_time: startTimes[i],
+      end_time: endTimes[i],
+      is_break: isBreaks[i] === '1',
+      break_duration: isBreaks[i] === '1' ? parseInt(breakDurations[i]) || null : null
+    });
+  }
+  
+  // التحقق من البيانات
+  if (!scheduleData.name || !scheduleData.type) {
+    showNotification('يجب ملء جميع الحقول المطلوبة', 'error');
+    return;
+  }
+  
+  if (scheduleData.periods.length === 0) {
+    showNotification('يجب إضافة فترة واحدة على الأقل', 'error');
+    return;
+  }
+  
+  const submitBtn = event.target.querySelector('button[type="submit"]');
+  const originalText = submitBtn.innerHTML;
+  
+  try {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>جاري الإنشاء...';
+    
+    const result = await apiService.createSchedule(scheduleData);
+    
+    if (result.success) {
+      showNotification('تم إنشاء التوقيت بنجاح', 'success');
+      
+      // إغلاق المودال
+      const modal = bootstrap.Modal.getInstance(document.getElementById('createScheduleModal'));
+      modal.hide();
+      
+      // إعادة تحميل قائمة التوقيتات
+      showAdminSection('schedules');
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء إنشاء التوقيت', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
+  }
+}
+
+// حذف توقيت
+async function deleteSchedule(scheduleId) {
+  if (!confirm('هل أنت متأكد من حذف هذا التوقيت؟\nلن يمكن التراجع عن هذه العملية.')) {
+    return;
+  }
+  
+  try {
+    const result = await apiService.deleteSchedule(scheduleId);
+    
+    if (result.success) {
+      showNotification('تم حذف التوقيت بنجاح', 'success');
+      showAdminSection('schedules'); // إعادة تحميل المحتوى
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء حذف التوقيت', 'error');
+  }
+}
+
+// عرض جدول فصل محدد
+async function showClassSchedule(grade, className) {
+  try {
+    // عرض مؤشر التحميل
+    const adminContent = document.getElementById('adminContent');
+    adminContent.innerHTML = `
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2">جاري تحميل جدول الفصل...</div>
+      </div>
+    `;
+
+    const result = await apiService.getClassSchedule(grade, className);
+    
+    if (result.success) {
+      const scheduleData = result.data.schedule;
+      const classInfo = result.data.class_info;
+      const appliedSchedule = result.data.applied_schedule;
+      
+      // إنشاء جدول تفاعلي
+      let tableHtml = `
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h4><i class="bi bi-table me-2"></i>جدول ${classInfo.full_name}</h4>
+            ${appliedSchedule ? `<small class="text-muted">التوقيت المطبق: ${appliedSchedule.name}</small>` : ''}
+          </div>
+          <div>
+            <button class="btn btn-outline-secondary me-2" onclick="showAdminSection('class-schedules')">
+              <i class="bi bi-arrow-right"></i> العودة
+            </button>
+            <button class="btn btn-primary" onclick="showApplyScheduleModal('${grade}', '${className}')">
+              <i class="bi bi-clock"></i> تطبيق توقيت
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-bordered">
+            <thead class="table-light">
+              <tr>
+                <th width="15%">اليوم / الحصة</th>
+                <th width="17%">الحصة 1</th>
+                <th width="17%">الحصة 2</th>
+                <th width="17%">الحصة 3</th>
+                <th width="17%">الحصة 4</th>
+                <th width="17%">الحصة 5</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+      
+      days.forEach(day => {
+        tableHtml += `<tr><td class="fw-bold bg-light">${day}</td>`;
+        
+        for (let period = 1; period <= 5; period++) {
+          const session = scheduleData[day] && scheduleData[day][period];
+          
+          if (session) {
+            tableHtml += `
+              <td class="session-cell filled" data-day="${day}" data-period="${period}">
+                <div class="session-info">
+                  <strong>${session.subject_name}</strong><br>
+                  <small class="text-muted">${session.teacher_name}</small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteSession(${session.id})" title="حذف">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            `;
+          } else {
+            tableHtml += `
+              <td class="session-cell empty" data-day="${day}" data-period="${period}">
+                <button class="btn btn-outline-primary w-100" onclick="showAddSessionModal('${grade}', '${className}', '${day}', ${period})">
+                  <i class="bi bi-plus"></i> إضافة حصة
+                </button>
+              </td>
+            `;
+          }
+        }
+        
+        tableHtml += '</tr>';
+      });
+      
+      tableHtml += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      adminContent.innerHTML = tableHtml;
+    }
+  } catch (error) {
+    const adminContent = document.getElementById('adminContent');
+    adminContent.innerHTML = `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ أثناء تحميل جدول الفصل: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// إظهار مودال إضافة حصة
+async function showAddSessionModal(grade, className, day, period) {
+  try {
+    // إعداد نص معلومات الموقع
+    const locationText = document.getElementById('sessionLocationText');
+    locationText.textContent = `${day} - الحصة ${period} - فصل ${grade} ${className}`;
+    
+    // ملء البيانات المخفية تلقائياً
+    document.getElementById('classGrade').value = grade;
+    document.getElementById('className').value = className;
+    document.getElementById('classDay').value = day;
+    document.getElementById('classPeriodNumber').value = period;
+    
+    // محاولة جلب التوقيت المطبق على هذا الفصل
+    try {
+      const classScheduleResult = await apiService.getClassSchedule(grade, className);
+      if (classScheduleResult.success && classScheduleResult.data.applied_schedule) {
+        const appliedSchedule = classScheduleResult.data.applied_schedule;
+        document.getElementById('selectedScheduleId').value = appliedSchedule.id;
+        
+        // جلب تفاصيل التوقيت لتحديد الأوقات
+        const scheduleResult = await apiService.getScheduleDetails(appliedSchedule.id);
+        if (scheduleResult.success && scheduleResult.data.periods) {
+          const periodData = scheduleResult.data.periods.find(p => p.period_number == period);
+          
+          if (periodData) {
+            document.getElementById('classStartTime').value = periodData.start_time;
+            document.getElementById('classEndTime').value = periodData.end_time;
+          } else {
+            // استخدام أوقات افتراضية
+            setDefaultTimes(period);
+          }
+        } else {
+          setDefaultTimes(period);
+        }
+      } else {
+        // لا يوجد توقيت مطبق، استخدام أوقات افتراضية
+        document.getElementById('selectedScheduleId').value = '';
+        setDefaultTimes(period);
+      }
+    } catch (error) {
+      console.warn('تعذر جلب التوقيت المطبق، سيتم استخدام أوقات افتراضية');
+      setDefaultTimes(period);
+    }
+    
+    // تحميل قوائم المعلمين والمواد
+    await loadClassModalData();
+    
+    // مسح الحقول القابلة للتعديل
+    document.getElementById('classTeacherId').value = '';
+    document.getElementById('classSubjectId').value = '';
+    document.getElementById('classNotes').value = '';
+    
+    // إظهار المودال
+    const modal = new bootstrap.Modal(document.getElementById('addClassModal'));
+    modal.show();
+  } catch (error) {
+    showNotification('حدث خطأ أثناء فتح مودال إضافة الحصة: ' + error.message, 'error');
+  }
+}
+
+// دالة مساعدة لتعيين الأوقات الافتراضية
+function setDefaultTimes(period) {
+  const defaultStartTimes = {
+    1: '07:30',
+    2: '08:30', 
+    3: '09:30',
+    4: '10:30',
+    5: '11:30',
+    6: '12:30',
+    7: '13:30',
+    8: '14:30'
+  };
+  
+  const startTime = defaultStartTimes[period] || '07:30';
+  const endTime = addOneHour(startTime);
+  
+  document.getElementById('classStartTime').value = startTime;
+  document.getElementById('classEndTime').value = endTime;
+}
+
+// إظهار مودال تطبيق توقيت
+async function showApplyScheduleModal(grade, className) {
+  try {
+    // إنشاء مودال ديناميكي
+    const modalId = 'applyScheduleModal';
+    let modal = document.getElementById(modalId);
+    
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.className = 'modal fade';
+      modal.id = modalId;
+      modal.innerHTML = `
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">تطبيق توقيت على الفصل</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="applyScheduleForm">
+              <div class="modal-body">
+                <div class="alert alert-info">
+                  <i class="bi bi-info-circle me-2"></i>
+                  سيتم تطبيق التوقيت المختار على فصل ${grade} ${className}
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">اختر التوقيت</label>
+                  <select class="form-control" id="scheduleToApply" required>
+                    <option value="">جاري التحميل...</option>
+                  </select>
+                </div>
+                
+                <div class="mb-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="replaceExisting" checked>
+                    <label class="form-check-label" for="replaceExisting">
+                      استبدال الحصص الموجودة
+                      <small class="text-muted d-block">في حالة عدم التحديد، سيتم إضافة الحصص فقط للفترات الفارغة</small>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="submit" class="btn btn-primary">تطبيق التوقيت</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      // إضافة مستمع للنموذج
+      document.getElementById('applyScheduleForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleApplySchedule(grade, className);
+      });
+    }
+    
+    // تحميل قائمة التوقيتات
+    const schedulesResult = await apiService.getSchedules();
+    const scheduleSelect = document.getElementById('scheduleToApply');
+    
+    if (schedulesResult.success && schedulesResult.data.length > 0) {
+      scheduleSelect.innerHTML = '<option value="">اختر التوقيت</option>';
+      schedulesResult.data.forEach(schedule => {
+        const option = document.createElement('option');
+        option.value = schedule.id;
+        option.textContent = `${schedule.name} (${schedule.periods_count || schedule.periods?.length || 0} فترات)`;
+        scheduleSelect.appendChild(option);
+      });
+    } else {
+      scheduleSelect.innerHTML = '<option value="">لا توجد توقيتات متاحة</option>';
+    }
+    
+    // إظهار المودال
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+  } catch (error) {
+    showNotification('حدث خطأ أثناء فتح مودال تطبيق التوقيت: ' + error.message, 'error');
+  }
+}
+
+// تطبيق التوقيت على فصل
+async function handleApplySchedule(grade, className) {
+  const scheduleId = document.getElementById('scheduleToApply').value;
+  const replaceExisting = document.getElementById('replaceExisting').checked;
+  
+  if (!scheduleId) {
+    showNotification('يجب اختيار توقيت', 'error');
+    return;
+  }
+  
+  const submitBtn = document.querySelector('#applyScheduleForm button[type="submit"]');
+  const originalText = submitBtn.innerHTML;
+  
+  try {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>جاري التطبيق...';
+    
+    const result = await apiService.applyScheduleToClass({
+      grade: grade,
+      class_name: className,
+      schedule_id: scheduleId,
+      replace_existing: replaceExisting
+    });
+    
+    if (result.success) {
+      showNotification('تم تطبيق التوقيت بنجاح', 'success');
+      
+      // إغلاق المودال
+      const modal = bootstrap.Modal.getInstance(document.getElementById('applyScheduleModal'));
+      modal.hide();
+      
+      // إعادة تحميل الجدول
+      showClassSchedule(grade, className);
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء تطبيق التوقيت', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
+  }
+}
+
+// حذف حصة
+async function deleteSession(sessionId) {
+  if (!confirm('هل أنت متأكد من حذف هذه الحصة؟')) {
+    return;
+  }
+  
+  try {
+    const result = await apiService.deleteClassSession(sessionId);
+    
+    if (result.success) {
+      showNotification('تم حذف الحصة بنجاح', 'success');
+      // إعادة تحميل الجدول
+      const currentUrl = window.location.hash;
+      if (currentUrl.includes('class-schedule')) {
+        // إعادة تحميل الجدول الحالي
+        location.reload();
+      }
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء حذف الحصة', 'error');
+  }
+}
+
 // دالة مساعدة لإضافة ساعة للوقت
 function addOneHour(time) {
     const [hours, minutes] = time.split(':').map(Number);
     const newHours = (hours + 1) % 24;
     return `${newHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+// تحديث أوقات الحصة بناءً على التوقيت المختار
+async function updateSessionTimesFromSchedule() {
+  const scheduleId = document.getElementById('selectedScheduleId').value;
+  const periodNumber = document.getElementById('classPeriodNumber').value;
+  
+  if (!scheduleId || !periodNumber) {
+    // إفراغ الأوقات إذا لم يتم اختيار توقيت
+    document.getElementById('classStartTime').value = '';
+    document.getElementById('classEndTime').value = '';
+    return;
+  }
+  
+  try {
+    // جلب تفاصيل التوقيت
+    const result = await apiService.getScheduleDetails(scheduleId);
+    
+    if (result.success && result.data.periods) {
+      const period = result.data.periods.find(p => p.period_number == periodNumber);
+      
+      if (period) {
+        document.getElementById('classStartTime').value = period.start_time;
+        document.getElementById('classEndTime').value = period.end_time;
+      } else {
+        // إذا لم توجد الفترة في التوقيت، استخدم أوقات افتراضية
+        const defaultStartTimes = ['07:30', '08:30', '09:30', '10:30', '11:30', '12:30', '13:30', '14:30'];
+        const startTime = defaultStartTimes[periodNumber - 1] || '07:30';
+        const endTime = addOneHour(startTime);
+        
+        document.getElementById('classStartTime').value = startTime;
+        document.getElementById('classEndTime').value = endTime;
+      }
+    }
+  } catch (error) {
+    console.error('خطأ في تحديث أوقات الحصة:', error);
+    // استخدام أوقات افتراضية في حالة الخطأ
+    const defaultStartTimes = ['07:30', '08:30', '09:30', '10:30', '11:30', '12:30', '13:30', '14:30'];
+    const startTime = defaultStartTimes[periodNumber - 1] || '07:30';
+    const endTime = addOneHour(startTime);
+    
+    document.getElementById('classStartTime').value = startTime;
+    document.getElementById('classEndTime').value = endTime;
+  }
+}
+
+// فتح صفحة إدارة الواتساب
+function openWhatsappManager() {
+  // فتح النافذة في تبويب جديد
+  const whatsappWindow = window.open('whatsapp-manager.html', '_blank');
+  
+  // تمرير بيانات المستخدم للنافذة الجديدة
+  setTimeout(() => {
+    if (whatsappWindow && !whatsappWindow.closed) {
+      // تأكد من وجود التوكن في localStorage للنافذة الجديدة
+      whatsappWindow.postMessage({
+        type: 'USER_DATA',
+        token: localStorage.getItem('auth_token'),
+        user: localStorage.getItem('user_data')
+      }, '*');
+    }
+  }, 1000);
 }
