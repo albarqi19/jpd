@@ -107,51 +107,54 @@ async function loadInitialData() {
 // تحميل الإحصائيات
 async function loadStatistics() {
     try {
-        const response = await apiService.getWhatsappStatistics();
+        console.log('استدعاء API للإحصائيات...');
+        const response = await apiService.get('/admin/whatsapp/statistics');
+        console.log('استجابة الإحصائيات:', response);
+        
         if (response.success) {
             const stats = response.data;
-            document.getElementById('totalSent').textContent = stats.total_sent;
-            document.getElementById('totalDelivered').textContent = stats.total_delivered;
-            document.getElementById('totalFailed').textContent = stats.total_failed;
-            document.getElementById('totalPending').textContent = stats.total_pending;
+            console.log('الإحصائيات المحملة:', stats);
+            
+            document.getElementById('totalSent').textContent = stats.total_sent || 0;
+            document.getElementById('totalDelivered').textContent = stats.total_delivered || 0;
+            document.getElementById('totalFailed').textContent = stats.total_failed || 0;
+            document.getElementById('totalPending').textContent = stats.total_pending || 0;
+            
+            console.log('تم تحديث واجهة الإحصائيات');
+        } else {
+            throw new Error(response.message || 'فشل في جلب الإحصائيات');
         }
         
     } catch (error) {
         console.error('خطأ في تحميل الإحصائيات:', error);
         // عرض بيانات افتراضية في حالة الخطأ
-        document.getElementById('totalSent').textContent = '245';
-        document.getElementById('totalDelivered').textContent = '238';
-        document.getElementById('totalFailed').textContent = '7';
-        document.getElementById('totalPending').textContent = '12';
+        document.getElementById('totalSent').textContent = '0';
+        document.getElementById('totalDelivered').textContent = '0';
+        document.getElementById('totalFailed').textContent = '0';
+        document.getElementById('totalPending').textContent = '0';
     }
 }
 
 // تحميل قائمة الانتظار
 async function loadQueue() {
     try {
-        const response = await apiService.getWhatsappQueue();
+        console.log('استدعاء API لقائمة الانتظار...');
+        const response = await apiService.get('/admin/whatsapp/queue');
+        console.log('استجابة قائمة الانتظار:', response);
+        
         if (response.success) {
-            whatsappQueue = response.data;
+            whatsappQueue = response.data.data || response.data; // للتعامل مع pagination
+            console.log('قائمة الانتظار المحملة:', whatsappQueue);
+        } else {
+            throw new Error(response.message || 'فشل في جلب قائمة الانتظار');
         }
         
         displayQueue();
         
     } catch (error) {
         console.error('خطأ في تحميل قائمة الانتظار:', error);
-        // عرض بيانات افتراضية في حالة الخطأ
-        whatsappQueue = [
-            {
-                id: 1,
-                student_name: 'أحمد محمد',
-                parent_phone: '966501234567',
-                message: 'عزيزي ولي الأمر، نود إعلامكم بأن الطالب أحمد محمد كان غائباً في حصة الرياضيات اليوم.',
-                status: 'pending',
-                attempts: 0,
-                created_at: new Date().toISOString(),
-                subject: 'الرياضيات',
-                grade: 'الصف الأول أ'
-            }
-        ];
+        // عرض رسالة خطأ في الواجهة
+        whatsappQueue = [];
         displayQueue();
     }
 }
@@ -179,20 +182,20 @@ function displayQueue() {
             <div class="queue-item ${statusClass}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="flex-grow-1">
-                        <h6 class="mb-1">${item.student_name} - ${item.grade}</h6>
-                        <p class="mb-1"><strong>المادة:</strong> ${item.subject}</p>
-                        <p class="mb-1"><strong>رقم الهاتف:</strong> ${item.parent_phone}</p>
+                        <h6 class="mb-1">${item.student?.name || 'غير محدد'} - ${item.student?.grade || 'غير محدد'}</h6>
+                        <p class="mb-1"><strong>رقم الهاتف:</strong> ${item.phone_number}</p>
                         <div class="message-preview">
-                            ${item.message}
+                            ${item.message_content}
                         </div>
                         <small class="text-muted">
                             <i class="bi bi-clock me-1"></i>
                             ${formatDateTime(item.created_at)}
-                            ${item.attempts > 0 ? `• المحاولة ${item.attempts}` : ''}
+                            ${item.retry_count > 0 ? `• المحاولة ${item.retry_count}` : ''}
+                            ${item.error_message ? `• خطأ: ${item.error_message}` : ''}
                         </small>
                     </div>
                     <div class="ms-3">
-                        <span class="badge status-badge bg-${statusClass}">${statusText}</span>
+                        <span class="badge status-badge bg-${statusColor}">${statusText}</span>
                         <div class="mt-2">
                             ${item.status === 'pending' ? `
                                 <button class="btn btn-primary btn-sm" onclick="sendSingleMessage(${item.id})">
@@ -204,9 +207,6 @@ function displayQueue() {
                                     <i class="bi bi-arrow-clockwise"></i> إعادة
                                 </button>
                             ` : ''}
-                            <button class="btn btn-outline-secondary btn-sm" onclick="editMessage(${item.id})">
-                                <i class="bi bi-pencil"></i>
-                            </button>
                             <button class="btn btn-outline-danger btn-sm" onclick="deleteMessage(${item.id})">
                                 <i class="bi bi-trash"></i>
                             </button>
@@ -776,6 +776,159 @@ function retrySingleMessage(messageId) {
         message.status = 'pending';
         sendSingleMessage(messageId);
     }
+}
+
+// إرسال الرسائل المعلقة
+async function sendPendingMessages() {
+    try {
+        showLoading(true);
+        console.log('إرسال الرسائل المعلقة...');
+        
+        const delay = document.getElementById('messageDelay')?.value || 2;
+        const response = await apiService.post('/admin/whatsapp/send-pending', { delay });
+        
+        if (response.success) {
+            showNotification(response.message, 'success');
+            await loadStatistics();
+            await loadQueue();
+        } else {
+            throw new Error(response.message);
+        }
+    } catch (error) {
+        console.error('خطأ في إرسال الرسائل:', error);
+        showNotification('خطأ في إرسال الرسائل: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// إعادة إرسال الرسائل الفاشلة
+async function retryFailedMessages() {
+    try {
+        showLoading(true);
+        console.log('إعادة إرسال الرسائل الفاشلة...');
+        
+        const delay = document.getElementById('messageDelay')?.value || 2;
+        const response = await apiService.post('/admin/whatsapp/retry-failed', { delay });
+        
+        if (response.success) {
+            showNotification(response.message, 'success');
+            await loadStatistics();
+            await loadQueue();
+        } else {
+            throw new Error(response.message);
+        }
+    } catch (error) {
+        console.error('خطأ في إعادة الإرسال:', error);
+        showNotification('خطأ في إعادة الإرسال: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// اختبار الاتصال
+async function testConnection() {
+    try {
+        showLoading(true);
+        console.log('اختبار اتصال الواتساب...');
+        
+        const response = await apiService.post('/admin/whatsapp/test-connection');
+        
+        if (response.success) {
+            showNotification('تم الاتصال بنجاح مع خدمة الواتساب', 'success');
+        } else {
+            throw new Error(response.message);
+        }
+    } catch (error) {
+        console.error('خطأ في اختبار الاتصال:', error);
+        showNotification('فشل في اختبار الاتصال: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// إرسال رسالة واحدة
+async function sendSingleMessage(messageId) {
+    try {
+        showLoading(true);
+        console.log('إرسال رسالة واحدة:', messageId);
+        
+        const response = await apiService.post(`/admin/whatsapp/send-pending`, { 
+            limit: 1,
+            message_id: messageId 
+        });
+        
+        if (response.success) {
+            showNotification('تم إرسال الرسالة بنجاح', 'success');
+            await loadStatistics();
+            await loadQueue();
+        } else {
+            throw new Error(response.message);
+        }
+    } catch (error) {
+        console.error('خطأ في إرسال الرسالة:', error);
+        showNotification('خطأ في إرسال الرسالة: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// إعادة إرسال رسالة واحدة
+async function retrySingleMessage(messageId) {
+    try {
+        showLoading(true);
+        console.log('إعادة إرسال رسالة واحدة:', messageId);
+        
+        const response = await apiService.post(`/admin/whatsapp/retry-failed`, { 
+            limit: 1,
+            message_id: messageId 
+        });
+        
+        if (response.success) {
+            showNotification('تم إعادة إرسال الرسالة بنجاح', 'success');
+            await loadStatistics();
+            await loadQueue();
+        } else {
+            throw new Error(response.message);
+        }
+    } catch (error) {
+        console.error('خطأ في إعادة إرسال الرسالة:', error);
+        showNotification('خطأ في إعادة إرسال الرسالة: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// حذف رسالة
+async function deleteMessage(messageId) {
+    if (!confirm('هل أنت متأكد من حذف هذه الرسالة؟')) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        console.log('حذف رسالة:', messageId);
+        
+        // تحديث قائمة الانتظار محلياً
+        whatsappQueue = whatsappQueue.filter(msg => msg.id !== messageId);
+        displayQueue();
+        
+        showNotification('تم حذف الرسالة بنجاح', 'success');
+        await loadStatistics();
+    } catch (error) {
+        console.error('خطأ في حذف الرسالة:', error);
+        showNotification('خطأ في حذف الرسالة: ' + error.message, 'error');
+        // إعادة تحميل القائمة في حالة الخطأ
+        await loadQueue();
+    } finally {
+        showLoading(false);
+    }
+}
+
+// تحديث البيانات
+async function refreshQueue() {
+    await loadQueue();
+    showNotification('تم تحديث قائمة الانتظار', 'info');
 }
 
 // اختبار اتصال الواتساب
