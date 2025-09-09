@@ -223,27 +223,22 @@ function displayQueue() {
 // تحميل السجل
 async function loadHistory() {
     try {
-        const response = await apiService.getWhatsappHistory();
+        console.log('استدعاء API لسجل الرسائل...');
+        const response = await apiService.get('/admin/whatsapp/history');
+        console.log('استجابة سجل الرسائل:', response);
+        
         if (response.success) {
-            whatsappHistory = response.data;
+            whatsappHistory = response.data.data || response.data; // للتعامل مع pagination
+            console.log('سجل الرسائل المحمل:', whatsappHistory);
+        } else {
+            throw new Error(response.message || 'فشل في جلب سجل الرسائل');
         }
         
         displayHistory();
         
     } catch (error) {
         console.error('خطأ في تحميل السجل:', error);
-        // عرض بيانات افتراضية في حالة الخطأ
-        whatsappHistory = [
-            {
-                id: 1,
-                student_name: 'سارة أحمد',
-                parent_phone: '966502222222',
-                message: 'تم إرسال إشعار الغياب بنجاح',
-                status: 'delivered',
-                sent_at: new Date(Date.now() - 3600000).toISOString(),
-                delivered_at: new Date(Date.now() - 3500000).toISOString()
-            }
-        ];
+        whatsappHistory = [];
         displayHistory();
     }
 }
@@ -265,15 +260,17 @@ function displayHistory() {
     let html = '';
     whatsappHistory.forEach(item => {
         const statusClass = getStatusClass(item.status);
+        const studentName = item.student ? item.student.name : 'غير محدد';
+        const phoneNumber = item.phone_number || 'غير محدد';
         
         html += `
             <div class="timeline-item ${statusClass}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <h6 class="mb-1">${item.student_name}</h6>
-                        <p class="mb-1">${item.parent_phone}</p>
+                        <h6 class="mb-1">${studentName}</h6>
+                        <p class="mb-1">${phoneNumber}</p>
                         <div class="message-preview">
-                            ${item.message}
+                            ${item.message_content}
                         </div>
                         ${item.error_message ? `
                             <div class="alert alert-danger py-1 px-2 mt-2">
@@ -285,7 +282,7 @@ function displayHistory() {
                         <span class="badge status-badge bg-${statusClass}">${getStatusText(item.status)}</span>
                         <br>
                         <small class="text-muted">
-                            ${formatDateTime(item.sent_at)}
+                            ${item.sent_at ? formatDateTime(item.sent_at) : 'لم يتم الإرسال'}
                             ${item.delivered_at ? `<br>وصلت: ${formatDateTime(item.delivered_at)}` : ''}
                         </small>
                     </div>
@@ -349,32 +346,22 @@ async function loadSettings() {
 // تحميل القوالب
 async function loadTemplates() {
     try {
-        const response = await apiService.getWhatsappTemplates();
+        console.log('استدعاء API للقوالب...');
+        const response = await apiService.get('/admin/whatsapp/templates');
+        console.log('استجابة القوالب:', response);
+        
         if (response.success) {
             messageTemplates = response.data;
+            console.log('القوالب المحملة:', messageTemplates);
+        } else {
+            throw new Error(response.message || 'فشل في جلب القوالب');
         }
         
         displayTemplates();
         
     } catch (error) {
         console.error('خطأ في تحميل القوالب:', error);
-        // قوالب افتراضية في حالة الخطأ
-        messageTemplates = [
-            {
-                id: 1,
-                name: 'إشعار الغياب',
-                content: 'عزيزي ولي الأمر، نود إعلامكم بأن الطالب {student_name} كان غائباً في حصة {subject} اليوم {date}.',
-                type: 'absence',
-                is_active: true
-            },
-            {
-                id: 2,
-                name: 'إشعار التأخير',
-                content: 'عزيزي ولي الأمر، نود إعلامكم بأن الطالب {student_name} تأخر في حصة {subject} اليوم {date}.',
-                type: 'late',
-                is_active: true
-            }
-        ];
+        messageTemplates = [];
         displayTemplates();
     }
 }
@@ -398,12 +385,15 @@ function displayTemplates() {
     
     let html = '';
     messageTemplates.forEach(template => {
+        const templateContent = template.content || template.message || 'لا يوجد محتوى';
+        const templateType = template.type || 'عام';
+        
         html += `
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="mb-0">${template.name}</h6>
-                        <small class="text-muted">النوع: ${getTemplateTypeText(template.type)}</small>
+                        <small class="text-muted">النوع: ${getTemplateTypeText(templateType)}</small>
                     </div>
                     <div>
                         <div class="form-check form-switch">
@@ -415,7 +405,7 @@ function displayTemplates() {
                 </div>
                 <div class="card-body">
                     <div class="message-preview">
-                        ${template.content}
+                        ${templateContent}
                     </div>
                     <div class="mt-2">
                         <button class="btn btn-outline-primary btn-sm" onclick="editTemplate(${template.id})">
@@ -712,31 +702,230 @@ function filterHistory() {
 
 // دوال القوالب
 function addMessageTemplate() {
-    // ستتم إضافتها لاحقاً
-    showToast('ميزة إضافة القوالب ستكون متاحة قريباً', 'info');
+    const templateName = prompt('اسم القالب:');
+    if (!templateName) return;
+    
+    const templateContent = prompt('محتوى القالب (يمكن استخدام متغيرات مثل {{student_name}}, {{date}}, {{subject}}):');
+    if (!templateContent) return;
+    
+    const templateType = prompt('نوع القالب (absence, late, general):') || 'general';
+    
+    createNewTemplate({
+        name: templateName,
+        content: templateContent,
+        type: templateType,
+        is_active: true
+    });
 }
 
-function editTemplate(templateId) {
-    // ستتم إضافتها لاحقاً
-    showToast('ميزة تعديل القوالب ستكون متاحة قريباً', 'info');
-}
-
-function deleteTemplate(templateId) {
-    // ستتم إضافتها لاحقاً
-    showToast('ميزة حذف القوالب ستكون متاحة قريباً', 'info');
-}
-
-function toggleTemplate(templateId) {
-    const template = messageTemplates.find(t => t.id === templateId);
-    if (template) {
-        template.is_active = !template.is_active;
-        showToast(`تم ${template.is_active ? 'تفعيل' : 'تعطيل'} القالب`, 'success');
+async function createNewTemplate(templateData) {
+    try {
+        showLoading(true);
+        console.log('إنشاء قالب جديد:', templateData);
+        
+        const response = await apiService.post('/admin/whatsapp/templates', templateData);
+        console.log('استجابة إنشاء القالب:', response);
+        
+        if (response.success) {
+            showNotification('تم إنشاء القالب بنجاح', 'success');
+            await loadTemplates();
+        } else {
+            throw new Error(response.message || 'فشل في إنشاء القالب');
+        }
+        
+    } catch (error) {
+        console.error('خطأ في إنشاء القالب:', error);
+        showNotification('فشل في إنشاء القالب: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
-function testTemplate(templateId) {
-    // ستتم إضافتها لاحقاً
-    showToast('ميزة اختبار القوالب ستكون متاحة قريباً', 'info');
+async function editTemplate(templateId) {
+    try {
+        // الحصول على القالب من البيانات الحقيقية
+        const templatesResponse = await apiService.get('/admin/whatsapp/templates');
+        const templates = templatesResponse.data || [];
+        const template = templates.find(t => t.id === templateId);
+        
+        if (!template) {
+            showNotification('القالب غير موجود', 'error');
+            return;
+        }
+        
+        const newName = prompt('اسم القالب:', template.name);
+        if (newName === null) return;
+        
+        const newContent = prompt('محتوى القالب:', template.content || template.message);
+        if (newContent === null) return;
+        
+        const newType = prompt('نوع القالب:', template.type || 'general');
+        if (newType === null) return;
+        
+        await updateTemplate(templateId, {
+            name: newName,
+            content: newContent,
+            type: newType,
+            is_active: template.is_active
+        });
+        
+    } catch (error) {
+        console.error('خطأ في تحرير القالب:', error);
+        showNotification('فشل في تحرير القالب: ' + error.message, 'error');
+    }
+}
+
+async function updateTemplate(templateId, templateData) {
+    try {
+        showLoading(true);
+        console.log('تحديث القالب:', templateId, templateData);
+        
+        const response = await apiService.put(`/admin/whatsapp/templates/${templateId}`, templateData);
+        console.log('استجابة تحديث القالب:', response);
+        
+        if (response.success) {
+            showNotification('تم تحديث القالب بنجاح', 'success');
+            await loadTemplates();
+        } else {
+            throw new Error(response.message || 'فشل في تحديث القالب');
+        }
+        
+    } catch (error) {
+        console.error('خطأ في تحديث القالب:', error);
+        showNotification('فشل في تحديث القالب: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function deleteTemplate(templateId) {
+    if (!confirm('هل تريد حذف هذا القالب؟')) {
+        return;
+    }
+    
+    deleteTemplateConfirmed(templateId);
+}
+
+async function deleteTemplateConfirmed(templateId) {
+    try {
+        showLoading(true);
+        console.log('حذف القالب:', templateId);
+        
+        const response = await apiService.delete(`/admin/whatsapp/templates/${templateId}`);
+        console.log('استجابة حذف القالب:', response);
+        
+        if (response.success) {
+            showNotification('تم حذف القالب بنجاح', 'success');
+            await loadTemplates();
+        } else {
+            throw new Error(response.message || 'فشل في حذف القالب');
+        }
+        
+    } catch (error) {
+        console.error('خطأ في حذف القالب:', error);
+        showNotification('فشل في حذف القالب: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function toggleTemplate(templateId) {
+    try {
+        showLoading(true);
+        console.log('تحديث حالة القالب:', templateId);
+        
+        // الحصول على القالب الحالي لمعرفة حالته
+        const templatesResponse = await apiService.get('/admin/whatsapp/templates');
+        const templates = templatesResponse.data || [];
+        const template = templates.find(t => t.id === templateId);
+        
+        if (!template) {
+            throw new Error('القالب غير موجود');
+        }
+        
+        const newStatus = !template.is_active;
+        
+        const response = await apiService.patch(`/admin/whatsapp/templates/${templateId}`, {
+            is_active: newStatus
+        });
+        console.log('استجابة تحديث حالة القالب:', response);
+        
+        if (response.success) {
+            showNotification(`تم ${newStatus ? 'تفعيل' : 'إلغاء تفعيل'} القالب بنجاح`, 'success');
+            await loadTemplates();
+        } else {
+            throw new Error(response.message || 'فشل في تحديث حالة القالب');
+        }
+        
+    } catch (error) {
+        console.error('خطأ في تحديث حالة القالب:', error);
+        showNotification('فشل في تحديث حالة القالب: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function testTemplate(templateId) {
+    try {
+        // الحصول على القالب من البيانات الحقيقية
+        const templatesResponse = await apiService.get('/admin/whatsapp/templates');
+        const templates = templatesResponse.data || [];
+        const template = templates.find(t => t.id === templateId);
+        
+        if (!template) {
+            showNotification('القالب غير موجود', 'error');
+            return;
+        }
+        
+        const testNumber = prompt('رقم الهاتف للاختبار (مثل: 966xxxxxxxxx):');
+        if (!testNumber) return;
+        
+        // متغيرات تجريبية للاختبار
+        const testVariables = {
+            student_name: 'أحمد محمد',
+            date: new Date().toLocaleDateString('ar-SA'),
+            subject: 'الرياضيات',
+            class_name: '3أ',
+            time: new Date().toLocaleTimeString('ar-SA')
+        };
+        
+        let testMessage = template.content || template.message;
+        Object.keys(testVariables).forEach(key => {
+            testMessage = testMessage.replace(new RegExp(`{{${key}}}`, 'g'), testVariables[key]);
+        });
+        
+        if (confirm(`سيتم إرسال الرسالة التالية:\n\n${testMessage}\n\nإلى: ${testNumber}\n\nهل تريد المتابعة؟`)) {
+            await sendTestMessage(testNumber, testMessage);
+        }
+        
+    } catch (error) {
+        console.error('خطأ في اختبار القالب:', error);
+        showNotification('فشل في اختبار القالب: ' + error.message, 'error');
+    }
+}
+
+async function sendTestMessage(phoneNumber, message) {
+    try {
+        showLoading(true);
+        showNotification('جاري إرسال رسالة الاختبار...', 'info');
+        
+        const response = await apiService.post('/admin/whatsapp/test-connection', {
+            test_number: phoneNumber,
+            message: message
+        });
+        
+        if (response.success) {
+            showNotification('تم إرسال رسالة الاختبار بنجاح', 'success');
+        } else {
+            throw new Error(response.message || 'فشل في إرسال رسالة الاختبار');
+        }
+        
+    } catch (error) {
+        console.error('خطأ في إرسال رسالة الاختبار:', error);
+        showNotification('فشل في إرسال رسالة الاختبار: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 // دوال إدارة الرسائل
