@@ -17,8 +17,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     window.addEventListener('message', function(event) {
         if (event.data.type === 'USER_DATA') {
             // تحديث localStorage في النافذة الجديدة
-            localStorage.setItem('token', event.data.token);
-            localStorage.setItem('user', event.data.user);
+            localStorage.setItem('auth_token', event.data.token);
+            localStorage.setItem('user_data', event.data.user);
             console.log('تم استقبال بيانات المستخدم من النافذة الأساسية');
         }
     });
@@ -38,23 +38,38 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // التحقق من تسجيل الدخول
 async function checkAuthentication() {
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
+    console.log('=== بدء التحقق من المصادقة في صفحة الواتساب ===');
+    
+    const token = localStorage.getItem('auth_token');
+    const user = localStorage.getItem('user_data');
+    
+    console.log('التوكن الموجود:', token?.substring(0, 20) + '...');
+    console.log('بيانات المستخدم الموجودة:', user);
     
     if (!token || !user) {
+        console.log('لا توجد بيانات مصادقة، العودة للصفحة الرئيسية');
         window.location.href = 'index.html';
         return;
     }
     
     try {
         currentUser = JSON.parse(user);
+        console.log('تم تحليل بيانات المستخدم:', currentUser);
+        
         apiService.setToken(token);
+        console.log('تم تعيين التوكن في apiService');
         
         // التحقق من صحة التوكن
+        console.log('التحقق من صحة التوكن...');
         const response = await apiService.getMe();
+        
         if (!response.success) {
+            console.error('استجابة غير صحيحة من API:', response);
             throw new Error('Invalid token');
         }
+        
+        console.log('تم التحقق من المصادقة بنجاح');
+        
     } catch (error) {
         console.error('خطأ في التحقق من المصادقة:', error);
         logout();
@@ -770,8 +785,10 @@ function testWhatsappConnection() {
 
 // تسجيل الخروج
 function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    console.log('تسجيل الخروج من صفحة الواتساب');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+    localStorage.removeItem('session_expiry');
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
