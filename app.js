@@ -5141,13 +5141,13 @@ async function showCreateScheduleModal() {
                 <div class="col-md-6">
                   <div class="mb-3">
                     <label class="form-label">اسم التوقيت</label>
-                    <input type="text" class="form-control" id="scheduleName" required placeholder="مثال: التوقيت الشتوي">
+                    <input type="text" class="form-control" id="scheduleName" name="scheduleName" required placeholder="مثال: التوقيت الشتوي">
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="mb-3">
                     <label class="form-label">نوع التوقيت</label>
-                    <select class="form-control" id="scheduleType" required>
+                    <select class="form-control" id="scheduleType" name="scheduleType" required>
                       <option value="">اختر النوع</option>
                       <option value="winter">شتوي</option>
                       <option value="summer">صيفي</option>
@@ -5161,13 +5161,13 @@ async function showCreateScheduleModal() {
                 <div class="col-md-6">
                   <div class="mb-3">
                     <label class="form-label">المرحلة المستهدفة (اختياري)</label>
-                    <input type="text" class="form-control" id="scheduleTargetLevel" placeholder="مثال: الابتدائية">
+                    <input type="text" class="form-control" id="scheduleTargetLevel" name="scheduleTargetLevel" placeholder="مثال: الابتدائية">
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="mb-3">
                     <label class="form-label">الوصف (اختياري)</label>
-                    <input type="text" class="form-control" id="scheduleDescription" placeholder="وصف مختصر للتوقيت">
+                    <input type="text" class="form-control" id="scheduleDescription" name="scheduleDescription" placeholder="وصف مختصر للتوقيت">
                   </div>
                 </div>
               </div>
@@ -5317,11 +5317,25 @@ async function handleCreateSchedule(event) {
   event.preventDefault();
   
   const formData = new FormData(event.target);
+  
+  // جمع البيانات الأساسية
+  const scheduleName = formData.get('scheduleName');
+  const scheduleType = formData.get('scheduleType');
+  const scheduleTargetLevel = formData.get('scheduleTargetLevel');
+  const scheduleDescription = formData.get('scheduleDescription');
+  
+  console.log('Schedule data:', {
+    name: scheduleName,
+    type: scheduleType,
+    target_level: scheduleTargetLevel,
+    description: scheduleDescription
+  });
+  
   const scheduleData = {
-    name: formData.get('scheduleName'),
-    type: formData.get('scheduleType'),
-    target_level: formData.get('scheduleTargetLevel'),
-    description: formData.get('scheduleDescription'),
+    name: scheduleName,
+    type: scheduleType,
+    target_level: scheduleTargetLevel,
+    description: scheduleDescription,
     periods: []
   };
   
@@ -5344,9 +5358,16 @@ async function handleCreateSchedule(event) {
     });
   }
   
+  console.log('Full schedule data:', scheduleData);
+  
   // التحقق من البيانات
-  if (!scheduleData.name || !scheduleData.type) {
-    showNotification('يجب ملء جميع الحقول المطلوبة', 'error');
+  if (!scheduleData.name || scheduleData.name.trim() === '') {
+    showNotification('اسم التوقيت مطلوب', 'error');
+    return;
+  }
+  
+  if (!scheduleData.type || scheduleData.type.trim() === '') {
+    showNotification('نوع التوقيت مطلوب', 'error');
     return;
   }
   
@@ -5375,6 +5396,7 @@ async function handleCreateSchedule(event) {
       showAdminSection('schedules');
     }
   } catch (error) {
+    console.error('Error creating schedule:', error);
     showNotification(error.message || 'حدث خطأ أثناء إنشاء التوقيت', 'error');
   } finally {
     submitBtn.disabled = false;
