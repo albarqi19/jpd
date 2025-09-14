@@ -1,4 +1,6 @@
 // بيانات التطبيق
+const API_BASE_URL = 'https://lael-comose-rocio.ngrok-free.app/api';
+
 const appData = {
   teachers: [
     {
