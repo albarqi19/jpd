@@ -5620,12 +5620,25 @@ async function showClassSchedule(grade, className) {
           <table class="table table-bordered">
             <thead class="table-light">
               <tr>
-                <th width="15%">اليوم / الحصة</th>
-                <th width="17%">الحصة 1</th>
-                <th width="17%">الحصة 2</th>
-                <th width="17%">الحصة 3</th>
-                <th width="17%">الحصة 4</th>
-                <th width="17%">الحصة 5</th>
+                <th width="15%">اليوم / الحصة</th>`;
+      
+      // إنشاء رؤوس الحصص مع التوقيت إذا كان متوفر
+      for (let period = 1; period <= 5; period++) {
+        // البحث عن أي حصة لهذه الفترة لاستخراج التوقيت
+        let periodTime = '';
+        const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+        for (const day of days) {
+          if (scheduleData[day] && scheduleData[day][period]) {
+            const session = scheduleData[day][period];
+            periodTime = `<br><small class="text-muted">${session.start_time} - ${session.end_time}</small>`;
+            break;
+          }
+        }
+        
+        tableHtml += `<th width="17%">الحصة ${period}${periodTime}</th>`;
+      }
+      
+      tableHtml += `
               </tr>
             </thead>
             <tbody>
@@ -5644,7 +5657,8 @@ async function showClassSchedule(grade, className) {
               <td class="session-cell filled" data-day="${day}" data-period="${period}">
                 <div class="session-info">
                   <strong>${session.subject_name}</strong><br>
-                  <small class="text-muted">${session.teacher_name}</small>
+                  <small class="text-muted">${session.teacher_name}</small><br>
+                  <small class="text-primary">${session.start_time} - ${session.end_time}</small>
                 </div>
                 <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteSession(${session.id})" title="حذف">
                   <i class="bi bi-trash"></i>
