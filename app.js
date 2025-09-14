@@ -4761,33 +4761,55 @@ async function loadTeacherSchedule() {
         }
 
         // أيام الأسبوع
-        const daysOfWeek = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-        const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
+        const daysOfWeek = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+        
+        // استخراج جميع الأوقات الفريدة من الحصص وترتيبها
+        const uniqueTimes = [...new Set(sessions.map(s => s.formatted_start_time || s.start_time?.substring(0, 5)))];
+        const timeSlots = uniqueTimes.filter(time => time).sort();
+        
+        console.log('الأوقات المستخرجة من الحصص:', timeSlots);
+        
+        if (timeSlots.length === 0) {
+            scheduleContainer.innerHTML = `
+                <div class="alert alert-warning text-center">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    لا توجد أوقات محددة للحصص
+                </div>
+            `;
+            return;
+        }
         
         let scheduleHTML = `
             <div class="table-responsive">
                 <table class="table table-bordered text-center" id="scheduleTable">
                     <thead>
                         <tr>
-                            <th style="width: 100px;">الوقت</th>
+                            <th style="width: 120px;">الوقت</th>
                             ${daysOfWeek.map(day => `<th>${day}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
         `;
 
-        // إنشاء جدول الحصص
+        // إنشاء جدول الحصص بناءً على الأوقات الفعلية
         timeSlots.forEach(timeSlot => {
             scheduleHTML += `<tr>`;
-            scheduleHTML += `<td class="fw-bold bg-light">${formatTo12Hour(timeSlot)} - ${formatTo12Hour(addOneHour(timeSlot))}</td>`;
+            
+            // البحث عن حصة في هذا الوقت لاستخراج وقت الانتهاء
+            const sampleSession = sessions.find(s => 
+                (s.formatted_start_time || s.start_time?.substring(0, 5)) === timeSlot
+            );
+            const endTime = sampleSession ? 
+                (sampleSession.formatted_end_time || sampleSession.end_time?.substring(0, 5)) : 
+                timeSlot;
+            
+            scheduleHTML += `<td class="fw-bold bg-light">${timeSlot} - ${endTime}</td>`;
             
             daysOfWeek.forEach((day, dayIndex) => {
                 // البحث عن الحصة بناءً على اليوم والوقت
                 const session = sessions.find(s => {
                     const sessionDay = s.day;
-                    const sessionTime = s.start_time ? s.start_time.substring(0, 5) : '';
-                    
-                    console.log(`البحث عن حصة: اليوم=${day}, الوقت=${timeSlot}, حصة: يوم=${sessionDay}, وقت=${sessionTime}`);
+                    const sessionTime = s.formatted_start_time || s.start_time?.substring(0, 5);
                     
                     return sessionDay === day && sessionTime === timeSlot;
                 });
@@ -4797,9 +4819,11 @@ async function loadTeacherSchedule() {
                     const isToday = dayIndex === currentDay;
                     
                     scheduleHTML += `
-                        <td class="schedule-cell ${isToday ? 'current-day' : ''}">
+                        <td class="schedule-cell ${isToday ? 'current-day' : ''} ${session.is_current ? 'current-session' : ''}" style="background-color: ${session.is_current ? '#e3f2fd' : ''}">
                             <div class="fw-bold text-primary">${session.subject?.name || 'غير محدد'}</div>
-                            <div class="small text-muted">${session.grade || 'غير محدد'}</div>
+                            <div class="small text-muted">${session.grade || 'غير محدد'} - ${session.class_name || ''}</div>
+                            ${session.is_current ? '<div class="badge bg-success mt-1">جارية الآن</div>' : ''}
+                            ${session.can_take_attendance ? '<div class="badge bg-warning mt-1">يمكن أخذ الحضور</div>' : ''}
                         </td>
                     `;
                 } else {
