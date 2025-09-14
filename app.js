@@ -5685,12 +5685,19 @@ async function showClassSchedule(grade, className) {
           const session = scheduleData[day] && scheduleData[day][period];
           
           if (session) {
+            // تنسيق التوقيت بشكل صحيح
+            const startTime = typeof session.start_time === 'string' ? session.start_time : 
+                            session.start_time ? session.start_time.substring(0, 5) : '';
+            const endTime = typeof session.end_time === 'string' ? session.end_time : 
+                          session.end_time ? session.end_time.substring(0, 5) : '';
+            const timeDisplay = (startTime && endTime) ? `${startTime} - ${endTime}` : '';
+            
             tableHtml += `
               <td class="session-cell filled" data-day="${day}" data-period="${period}">
                 <div class="session-info">
                   <strong>${session.subject_name}</strong><br>
-                  <small class="text-muted">${session.teacher_name}</small><br>
-                  <small class="text-primary">${session.start_time} - ${session.end_time}</small>
+                  <small class="text-muted">${session.teacher_name}</small>
+                  ${timeDisplay ? `<br><small class="text-primary">${timeDisplay}</small>` : ''}
                 </div>
                 <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteSession(${session.id})" title="حذف">
                   <i class="bi bi-trash"></i>
