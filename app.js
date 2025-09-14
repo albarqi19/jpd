@@ -3299,9 +3299,14 @@ function createStudentsList(students, badgeType) {
         ${student.national_id ? `<br><small class="text-muted">رقم الهوية: ${student.national_id}</small>` : ''}
         ${student.notes ? `<br><small class="text-muted">ملاحظة: ${student.notes}</small>` : ''}
       </div>
-      <div>
+      <div class="text-end">
         <span class="badge bg-${badgeType}">${getStatusText(student.status)}</span>
         <br><small class="text-muted">${formatTime(student.recorded_at)}</small>
+        ${student.status === 'absent' ? `
+          <br><button class="btn btn-sm btn-warning mt-1" onclick="changeToLate(${student.attendance_id})">
+            <i class="bi bi-clock me-1"></i>تغيير إلى متأخر
+          </button>
+        ` : ''}
       </div>
     </div>
   `).join('');
@@ -3362,6 +3367,34 @@ function exportSessionReport(sessionId, date) {
     date: date
   };
   exportAttendanceReport('excel', filters);
+}
+
+// تغيير حالة الطالب من غائب إلى متأخر
+async function changeToLate(attendanceId) {
+  // طلب عدد دقائق التأخير من المستخدم
+  const lateMinutes = prompt('كم عدد دقائق التأخير؟ (1-240)', '30');
+  
+  if (!lateMinutes || isNaN(lateMinutes) || lateMinutes < 1 || lateMinutes > 240) {
+    showNotification('يجب إدخال عدد صحيح من الدقائق بين 1 و 240', 'error');
+    return;
+  }
+
+  try {
+    const result = await apiService.post(`/admin/attendance-reports/${attendanceId}/change-to-late`, {
+      late_minutes: parseInt(lateMinutes)
+    });
+
+    if (result.success) {
+      showNotification(result.message, 'success');
+      // إعادة تحميل تفاصيل الحضور
+      window.location.reload(); // سريع لإعادة تحديث البيانات
+    } else {
+      showNotification(result.message || 'فشل في تغيير حالة الطالب', 'error');
+    }
+  } catch (error) {
+    console.error('خطأ في تغيير حالة الطالب:', error);
+    showNotification('خطأ في تغيير حالة الطالب: ' + error.message, 'error');
+  }
 }
 
 // تسجيل الخروج
