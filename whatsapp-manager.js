@@ -396,27 +396,30 @@ function displayTemplates() {
                         <small class="text-muted">النوع: ${getTemplateTypeText(templateType)}</small>
                     </div>
                     <div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" ${template.is_active ? 'checked' : ''} 
-                                   onchange="toggleTemplate(${template.id})">
-                            <label class="form-check-label">نشط</label>
+                        <span class="badge ${template.is_active ? 'bg-success' : 'bg-secondary'} me-2">
+                            ${template.is_active ? 'نشط' : 'غير نشط'}
+                        </span>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="editTemplate(${template.id})">
+                                <i class="bi bi-pencil"></i> تعديل
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="deleteTemplate(${template.id})">
+                                <i class="bi bi-trash"></i> حذف
+                            </button>
                         </div>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="message-preview">
-                        ${templateContent}
+                    <div class="message-preview mb-3">
+                        ${templateContent.substring(0, 200)}${templateContent.length > 200 ? '...' : ''}
                     </div>
-                    <div class="mt-2">
-                        <button class="btn btn-outline-primary btn-sm" onclick="editTemplate(${template.id})">
-                            <i class="bi bi-pencil"></i> تعديل
-                        </button>
-                        <button class="btn btn-outline-success btn-sm" onclick="testTemplate(${template.id})">
-                            <i class="bi bi-play"></i> اختبار
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTemplate(${template.id})">
-                            <i class="bi bi-trash"></i> حذف
-                        </button>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">تم الإنشاء: ${formatDateTime(template.created_at)}</small>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <small class="text-muted">آخر تحديث: ${formatDateTime(template.updated_at)}</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -424,6 +427,17 @@ function displayTemplates() {
     });
     
     container.innerHTML = html;
+}
+
+// تحويل نوع القالب إلى نص
+function getTemplateTypeText(type) {
+    const types = {
+        'absent': 'رسالة الغياب',
+        'late': 'رسالة التأخير',
+        'repeated_absence': 'الغياب المتكرر',
+        'weekly_summary': 'الملخص الأسبوعي'
+    };
+    return types[type] || 'عام';
 }
 
 // ======== دوال الإجراءات ========

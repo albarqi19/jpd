@@ -5125,8 +5125,134 @@ async function viewScheduleDetails(scheduleId) {
 
 // تعديل توقيت
 async function editSchedule(scheduleId) {
-  // سيتم تنفيذها لاحقاً
-  showNotification('هذه الميزة قيد التطوير', 'info');
+  try {
+    // جلب بيانات التوقيت
+    const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      throw new Error('فشل في جلب بيانات التوقيت');
+    }
+    
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'فشل في جلب بيانات التوقيت');
+    }
+    
+    const schedule = result.data;
+    
+    // إظهار مودال التعديل
+    const modalHtml = `
+      <div class="modal fade" id="editScheduleModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">تعديل التوقيت</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editScheduleForm">
+              <div class="modal-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="mb-3">
+                      <label class="form-label">اسم التوقيت</label>
+                      <input type="text" class="form-control" id="editScheduleName" name="name" required value="${schedule.name}">
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="mb-3">
+                      <label class="form-label">نوع التوقيت</label>
+                      <select class="form-control" id="editScheduleType" name="type" required>
+                        <option value="winter" ${schedule.type === 'winter' ? 'selected' : ''}>شتوي</option>
+                        <option value="summer" ${schedule.type === 'summer' ? 'selected' : ''}>صيفي</option>
+                        <option value="custom" ${schedule.type === 'custom' ? 'selected' : ''}>مخصص</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="mb-3">
+                      <label class="form-label">المرحلة المستهدفة</label>
+                      <input type="text" class="form-control" id="editScheduleTargetLevel" name="target_level" value="${schedule.target_level || ''}">
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="mb-3">
+                      <label class="form-label">الوصف</label>
+                      <input type="text" class="form-control" id="editScheduleDescription" name="description" value="${schedule.description || ''}">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="submit" class="btn btn-primary">حفظ التغييرات</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // إزالة أي مودال موجود وإضافة الجديد
+    const existingModal = document.getElementById('editScheduleModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // تهيئة المودال
+    const modal = new bootstrap.Modal(document.getElementById('editScheduleModal'));
+    modal.show();
+    
+    // معالجة الفورم
+    document.getElementById('editScheduleForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      await updateSchedule(scheduleId, new FormData(this));
+      modal.hide();
+    });
+    
+  } catch (error) {
+    showNotification('خطأ في تحميل بيانات التوقيت: ' + error.message, 'error');
+  }
+}
+
+// وظيفة تحديث التوقيت
+async function updateSchedule(scheduleId, formData) {
+  try {
+    const scheduleData = {
+      name: formData.get('name'),
+      type: formData.get('type'),
+      target_level: formData.get('target_level'),
+      description: formData.get('description')
+    };
+    
+    const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
+      method: 'PUT',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(scheduleData)
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showNotification('تم تحديث التوقيت بنجاح', 'success');
+      // إعادة تحميل قائمة التوقيتات
+      showSection('schedules');
+    } else {
+      throw new Error(result.message || 'فشل في تحديث التوقيت');
+    }
+    
+  } catch (error) {
+    showNotification('خطأ في تحديث التوقيت: ' + error.message, 'error');
+  }
 }
 
 // إظهار مودال إنشاء توقيت جديد
@@ -5410,11 +5536,33 @@ async function handleCreateSchedule(event) {
 
 // حذف توقيت
 async function deleteSchedule(scheduleId) {
-  if (!confirm('هل أنت متأكد من حذف هذا التوقيت؟\nلن يمكن التراجع عن هذه العملية.')) {
-    return;
-  }
-  
   try {
+    // أولاً نتحقق من وجود حصص مرتبطة
+    const checkResponse = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (!checkResponse.ok) {
+      throw new Error('فشل في التحقق من التوقيت');
+    }
+    
+    const checkResult = await checkResponse.json();
+    if (!checkResult.success) {
+      throw new Error(checkResult.message || 'فشل في التحقق من التوقيت');
+    }
+    
+    const schedule = checkResult.data;
+    let confirmMessage = 'هل أنت متأكد من حذف هذا التوقيت؟\nلن يمكن التراجع عن هذه العملية.';
+    
+    // إذا كان هناك حصص مرتبطة، نضيف تحذير
+    if (schedule.sessions_count && schedule.sessions_count > 0) {
+      confirmMessage = `تحذير: هذا التوقيت مرتبط بـ ${schedule.sessions_count} حصة!\n\nإذا قمت بحذفه ستتأثر جميع هذه الحصص.\nهل أنت متأكد من المتابعة؟`;
+    }
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    
     const result = await apiService.deleteSchedule(scheduleId);
     
     if (result.success) {
@@ -5422,7 +5570,11 @@ async function deleteSchedule(scheduleId) {
       showAdminSection('schedules'); // إعادة تحميل المحتوى
     }
   } catch (error) {
-    showNotification(error.message || 'حدث خطأ أثناء حذف التوقيت', 'error');
+    if (error.message.includes('مرتبط بحصص')) {
+      showNotification('لا يمكن حذف هذا التوقيت لأنه مرتبط بحصص نشطة. قم بإزالة أو تغيير التوقيت للحصص أولاً.', 'warning');
+    } else {
+      showNotification(error.message || 'حدث خطأ أثناء حذف التوقيت', 'error');
+    }
   }
 }
 
