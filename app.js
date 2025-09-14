@@ -3371,18 +3371,12 @@ function exportSessionReport(sessionId, date) {
 
 // تغيير حالة الطالب من غائب إلى متأخر
 async function changeToLate(attendanceId) {
-  // طلب عدد دقائق التأخير من المستخدم
-  const lateMinutes = prompt('كم عدد دقائق التأخير؟ (1-240)', '30');
-  
-  if (!lateMinutes || isNaN(lateMinutes) || lateMinutes < 1 || lateMinutes > 240) {
-    showNotification('يجب إدخال عدد صحيح من الدقائق بين 1 و 240', 'error');
+  if (!confirm('هل تريد تغيير حالة الطالب من غائب إلى متأخر؟\nسيتم حساب دقائق التأخير تلقائياً من بداية أول حصة.')) {
     return;
   }
 
   try {
-    const result = await apiService.post(`/admin/attendance-reports/${attendanceId}/change-to-late`, {
-      late_minutes: parseInt(lateMinutes)
-    });
+    const result = await apiService.post(`/admin/attendance-reports/${attendanceId}/change-to-late`, {});
 
     if (result.success) {
       showNotification(result.message, 'success');
