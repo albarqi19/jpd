@@ -936,6 +936,7 @@ async function loadAttendancePage() {
       studentItem.className = `student-item present`;
       studentItem.setAttribute('data-student-id', student.id);
       studentItem.innerHTML = `
+        <div class="absence-toggle" data-student-id="${student.id}"></div>
         <div class="student-info">
           <div class="student-name">${student.name}</div>
           <div class="student-roll">رقم الطالب: ${student.student_number}</div>
@@ -946,14 +947,17 @@ async function loadAttendancePage() {
         </div>
       `;
       
-      // إضافة مستمع الأحداث للنقر
-      studentItem.addEventListener('click', function() {
+      // إضافة مستمع الأحداث لزر التغييب فقط
+      const absenceToggle = studentItem.querySelector('.absence-toggle');
+      absenceToggle.addEventListener('click', function(e) {
+        e.stopPropagation(); // منع انتشار الحدث
         toggleStudentAttendance(student.id, studentItem);
       });
       
-      // إضافة دعم اللمس للأجهزة المحمولة
-      studentItem.addEventListener('touchend', function(e) {
+      // إضافة دعم اللمس لزر التغييب
+      absenceToggle.addEventListener('touchend', function(e) {
         e.preventDefault();
+        e.stopPropagation();
         toggleStudentAttendance(student.id, studentItem);
       });
       

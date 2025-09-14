@@ -804,13 +804,13 @@ body {
   border-radius: 8px;
   padding: 1.25rem 1.5rem;
   margin-bottom: 1rem;
-  cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   justify-content: space-between;
   align-items: center;
   min-height: 70px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .student-item:hover {
@@ -842,6 +842,8 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  cursor: default;
+  pointer-events: none;
 }
 
 .student-name {
@@ -873,12 +875,60 @@ body {
   font-size: 0.9rem;
 }
 
+/* زر التغييب في اليسار */
+.absence-toggle {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid #e2e8f0;
+  background-color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.absence-toggle:hover {
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.student-item.present .absence-toggle {
+  border-color: #10b981;
+  background-color: #10b981;
+  color: white;
+}
+
+.student-item.absent .absence-toggle {
+  border-color: #ef4444;
+  background-color: #ef4444;
+  color: white;
+}
+
+.student-item.present .absence-toggle::before {
+  content: '✓';
+  font-weight: bold;
+}
+
+.student-item.absent .absence-toggle::before {
+  content: '✗';
+  font-weight: bold;
+}
+
 .attendance-status {
   display: flex;
   align-items: center;
   flex-direction: column;
   text-align: center;
   min-width: 80px;
+  pointer-events: none;
 }
 
 .status-text {
@@ -892,10 +942,6 @@ body {
 .status-icon {
   font-size: 1.5rem;
   transition: all 0.3s ease;
-}
-
-.student-item:hover .status-icon {
-  transform: scale(1.2);
 }
 
 /* تحسينات إضافية للألوان */
@@ -930,6 +976,16 @@ body {
 }
 
 .student-item:not(.present):not(.absent) .status-icon {
+  color: #a0aec0;
+}
+
+.student-item:not(.present):not(.absent) .absence-toggle {
+  border-color: #cbd5e0;
+  background-color: #f7fafc;
+}
+
+.student-item:not(.present):not(.absent) .absence-toggle::before {
+  content: '○';
   color: #a0aec0;
 }
 
@@ -1304,15 +1360,23 @@ body {
   
   /* تحسين قائمة الطلاب للجوال */
   .student-item {
-    padding: 1rem 1.25rem;
-    min-height: 70px;
-    flex-direction: column;
-    align-items: flex-start;
+    padding: 1rem 1.25rem 1rem 60px; /* مساحة إضافية لزر التغييب */
+    min-height: 80px;
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .absence-toggle {
+    left: 8px;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
   }
   
   .student-info {
     width: 100%;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0;
+    padding-right: 0.5rem;
   }
   
   .student-name {
@@ -1320,14 +1384,14 @@ body {
   }
   
   .attendance-status {
-    align-self: flex-end;
-    flex-direction: row;
-    min-width: auto;
+    min-width: 70px;
+    flex-direction: column;
   }
   
   .status-text {
-    margin-bottom: 0;
-    margin-left: 0.5rem;
+    margin-bottom: 0.25rem;
+    margin-left: 0;
+    font-size: 0.8rem;
   }
   
   /* تحسين الإحصائيات للجوال */
