@@ -7,12 +7,10 @@ function formatTime(timeString) {
   
   // إذا كان التوقيت بصيغة ISO (مع التاريخ)
   if (timeString.includes('T')) {
-    const date = new Date(timeString);
-    return date.toLocaleTimeString('ar-SA', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+    // استخراج الوقت فقط من النص مباشرة بدون تحويل التاريخ
+    const timePart = timeString.split('T')[1]; // الجزء بعد T
+    const timeOnly = timePart.split('.')[0]; // إزالة الميلي ثانية
+    return timeOnly.substring(0, 5); // أخذ HH:MM فقط
   }
   
   // إذا كان التوقيت بصيغة HH:MM:SS أو HH:MM
@@ -2757,17 +2755,6 @@ function formatDate(dateString) {
   });
 }
 
-function formatTime(timeString) {
-  if (!timeString) return 'غير محدد';
-  
-  const date = new Date(timeString);
-  return date.toLocaleTimeString('ar-SA', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
-}
-
 // محتوى اعتماد التحضير
 function getApprovalContent() {
   // تحميل البيانات الحقيقية عند عرض المحتوى
@@ -5174,16 +5161,9 @@ async function viewScheduleDetails(scheduleId) {
 // تعديل توقيت
 async function editSchedule(scheduleId) {
   try {
-    // جلب بيانات التوقيت
-    const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
-      headers: apiService.getHeaders()
-    });
+    // استخدام apiService مباشرة
+    const result = await apiService.get(`/admin/schedules/${scheduleId}`);
     
-    if (!response.ok) {
-      throw new Error('فشل في جلب بيانات التوقيت');
-    }
-    
-    const result = await response.json();
     if (!result.success) {
       throw new Error(result.message || 'فشل في جلب بيانات التوقيت');
     }
@@ -5279,16 +5259,8 @@ async function updateSchedule(scheduleId, formData) {
       description: formData.get('description')
     };
     
-    const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
-      method: 'PUT',
-      headers: {
-        ...apiService.getHeaders(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(scheduleData)
-    });
-    
-    const result = await response.json();
+    // استخدام apiService مباشرة
+    const result = await apiService.put(`/admin/schedules/${scheduleId}`, scheduleData);
     
     if (result.success) {
       showNotification('تم تحديث التوقيت بنجاح', 'success');
@@ -5586,15 +5558,8 @@ async function handleCreateSchedule(event) {
 async function deleteSchedule(scheduleId) {
   try {
     // أولاً نتحقق من وجود حصص مرتبطة
-    const checkResponse = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
-      headers: apiService.getHeaders()
-    });
+    const checkResult = await apiService.get(`/admin/schedules/${scheduleId}`);
     
-    if (!checkResponse.ok) {
-      throw new Error('فشل في التحقق من التوقيت');
-    }
-    
-    const checkResult = await checkResponse.json();
     if (!checkResult.success) {
       throw new Error(checkResult.message || 'فشل في التحقق من التوقيت');
     }
