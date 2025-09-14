@@ -1,6 +1,28 @@
 // بيانات التطبيق
 const API_BASE_URL = 'https://lael-comose-rocio.ngrok-free.app/api';
 
+// وظيفة مساعدة لتنسيق التوقيت
+function formatTime(timeString) {
+  if (!timeString) return '';
+  
+  // إذا كان التوقيت بصيغة ISO (مع التاريخ)
+  if (timeString.includes('T')) {
+    const date = new Date(timeString);
+    return date.toLocaleTimeString('ar-SA', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  }
+  
+  // إذا كان التوقيت بصيغة HH:MM:SS أو HH:MM
+  if (timeString.includes(':')) {
+    return timeString.substring(0, 5); // أخذ HH:MM فقط
+  }
+  
+  return timeString;
+}
+
 const appData = {
   teachers: [
     {
@@ -5154,7 +5176,7 @@ async function editSchedule(scheduleId) {
   try {
     // جلب بيانات التوقيت
     const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
-      headers: getAuthHeaders()
+      headers: apiService.getHeaders()
     });
     
     if (!response.ok) {
@@ -5260,7 +5282,7 @@ async function updateSchedule(scheduleId, formData) {
     const response = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
       method: 'PUT',
       headers: {
-        ...getAuthHeaders(),
+        ...apiService.getHeaders(),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(scheduleData)
@@ -5565,7 +5587,7 @@ async function deleteSchedule(scheduleId) {
   try {
     // أولاً نتحقق من وجود حصص مرتبطة
     const checkResponse = await fetch(`${API_BASE_URL}/admin/schedules/${scheduleId}`, {
-      headers: getAuthHeaders()
+      headers: apiService.getHeaders()
     });
     
     if (!checkResponse.ok) {
@@ -5655,10 +5677,8 @@ async function showClassSchedule(grade, className) {
           if (scheduleData[day] && scheduleData[day][period]) {
             const session = scheduleData[day][period];
             // تنسيق التوقيت بشكل صحيح
-            const startTime = typeof session.start_time === 'string' ? session.start_time : 
-                            session.start_time ? session.start_time.substring(0, 5) : '';
-            const endTime = typeof session.end_time === 'string' ? session.end_time : 
-                          session.end_time ? session.end_time.substring(0, 5) : '';
+            const startTime = formatTime(session.start_time);
+            const endTime = formatTime(session.end_time);
             
             if (startTime && endTime) {
               periodTime = `<br><small class="text-muted">${startTime} - ${endTime}</small>`;
@@ -5686,10 +5706,8 @@ async function showClassSchedule(grade, className) {
           
           if (session) {
             // تنسيق التوقيت بشكل صحيح
-            const startTime = typeof session.start_time === 'string' ? session.start_time : 
-                            session.start_time ? session.start_time.substring(0, 5) : '';
-            const endTime = typeof session.end_time === 'string' ? session.end_time : 
-                          session.end_time ? session.end_time.substring(0, 5) : '';
+            const startTime = formatTime(session.start_time);
+            const endTime = formatTime(session.end_time);
             const timeDisplay = (startTime && endTime) ? `${startTime} - ${endTime}` : '';
             
             tableHtml += `
