@@ -5654,7 +5654,15 @@ async function showClassSchedule(grade, className) {
         for (const day of days) {
           if (scheduleData[day] && scheduleData[day][period]) {
             const session = scheduleData[day][period];
-            periodTime = `<br><small class="text-muted">${session.start_time} - ${session.end_time}</small>`;
+            // تنسيق التوقيت بشكل صحيح
+            const startTime = typeof session.start_time === 'string' ? session.start_time : 
+                            session.start_time ? session.start_time.substring(0, 5) : '';
+            const endTime = typeof session.end_time === 'string' ? session.end_time : 
+                          session.end_time ? session.end_time.substring(0, 5) : '';
+            
+            if (startTime && endTime) {
+              periodTime = `<br><small class="text-muted">${startTime} - ${endTime}</small>`;
+            }
             break;
           }
         }
