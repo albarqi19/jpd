@@ -1036,7 +1036,8 @@ async function checkLateStudentsForToday(studentIds) {
     const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?date=${today}`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       }
     });
     
@@ -6223,7 +6224,8 @@ async function loadLateArrivals() {
     const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?${params}`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       }
     });
     
@@ -6324,7 +6326,8 @@ async function loadLateArrivalsStats() {
     const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/stats`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       }
     });
     
@@ -6346,7 +6349,8 @@ async function loadClassesForFilter() {
     const response = await fetch(`${API_BASE_URL}/admin/students`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       }
     });
     
