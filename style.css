@@ -979,6 +979,90 @@ body {
   color: #a0aec0;
 }
 
+/* أنماط الطلاب المتأخرين */
+.student-item.late-arrival {
+  background: linear-gradient(135deg, #fef3c7 0%, #fbbf24 100%);
+  border-color: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  position: relative;
+  overflow: hidden;
+}
+
+.student-item.late-arrival::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 25%, rgba(251, 191, 36, 0.1) 25%, rgba(251, 191, 36, 0.1) 50%, transparent 50%, transparent 75%, rgba(251, 191, 36, 0.1) 75%);
+  background-size: 20px 20px;
+  animation: move-stripes 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes move-stripes {
+  0% { background-position: 0 0; }
+  100% { background-position: 20px 20px; }
+}
+
+.student-item.late-arrival:hover {
+  border-color: #d97706;
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}
+
+.late-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 1rem;
+  background-color: rgba(251, 191, 36, 0.2);
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #f59e0b;
+}
+
+.late-indicator i {
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+}
+
+.late-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.student-item.late-arrival .student-name {
+  color: #92400e;
+  font-weight: 800;
+}
+
+.student-item.late-arrival .student-roll {
+  color: #a16207;
+}
+
+.student-item.late-arrival .status-text {
+  color: #92400e;
+  text-shadow: 0 1px 2px rgba(251, 191, 36, 0.3);
+}
+
+.student-item.late-arrival .status-icon {
+  color: #f59e0b;
+  filter: drop-shadow(0 2px 4px rgba(251, 191, 36, 0.4));
+}
+
+/* منع التفاعل مع الطلاب المتأخرين */
+.student-item.late-arrival {
+  cursor: not-allowed;
+}
+
+.student-item.late-arrival:active {
+  transform: none;
+}
+
 .student-item:not(.present):not(.absent) .absence-toggle {
   border-color: #cbd5e0;
   background-color: #f7fafc;

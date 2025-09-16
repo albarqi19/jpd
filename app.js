@@ -935,6 +935,10 @@ async function loadAttendancePage() {
     const studentsResult = await apiService.getClassStudents(currentClass.id);
     const students = studentsResult.data || [];
     
+    // تحميل قائمة الطلاب المتأخرين لليوم
+    const lateStudentsResult = await checkLateStudentsForToday(students.map(s => s.id));
+    const lateStudents = new Set(lateStudentsResult);
+    
     studentsList.innerHTML = '';
     
     if (students.length === 0) {
@@ -951,37 +955,58 @@ async function loadAttendancePage() {
     attendanceData = {};
     
     students.forEach(student => {
-      // افتراض أن جميع الطلاب حاضرين بشكل افتراضي
+      // التحقق من حالة التأخير
+      const isLate = lateStudents.has(student.id);
+      
+      // افتراض أن جميع الطلاب حاضرين بشكل افتراضي (حتى المتأخرين)
       attendanceData[student.id] = 'present';
       
       const studentItem = document.createElement('div');
-      studentItem.className = `student-item present`;
+      studentItem.className = `student-item present ${isLate ? 'late-arrival' : ''}`;
       studentItem.setAttribute('data-student-id', student.id);
+      
+      // إضافة علامة التأخير إذا كان الطالب متأخر
+      const lateIndicator = isLate ? `
+        <div class="late-indicator" title="طالب متأخر - لا يمكن تغيير حالته">
+          <i class="bi bi-clock-history text-warning"></i>
+          <span class="late-text">متأخر</span>
+        </div>
+      ` : '';
+      
       studentItem.innerHTML = `
-        <div class="absence-toggle" data-student-id="${student.id}"></div>
+        ${isLate ? '' : '<div class="absence-toggle" data-student-id="' + student.id + '"></div>'}
         <div class="student-info">
           <div class="student-name">${student.name}</div>
           <div class="student-roll">رقم الطالب: ${student.student_number}</div>
         </div>
+        ${lateIndicator}
         <div class="attendance-status">
-          <span class="status-text">حاضر</span>
+          <span class="status-text">${isLate ? 'حاضر (متأخر)' : 'حاضر'}</span>
           <i class="bi bi-check-circle status-icon"></i>
         </div>
       `;
       
-      // إضافة مستمع الأحداث لزر التغييب فقط
-      const absenceToggle = studentItem.querySelector('.absence-toggle');
-      absenceToggle.addEventListener('click', function(e) {
-        e.stopPropagation(); // منع انتشار الحدث
-        toggleStudentAttendance(student.id, studentItem);
-      });
-      
-      // إضافة دعم اللمس لزر التغييب
-      absenceToggle.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleStudentAttendance(student.id, studentItem);
-      });
+      // إضافة مستمع الأحداث لزر التغييب فقط للطلاب غير المتأخرين
+      if (!isLate) {
+        const absenceToggle = studentItem.querySelector('.absence-toggle');
+        absenceToggle.addEventListener('click', function(e) {
+          e.stopPropagation(); // منع انتشار الحدث
+          toggleStudentAttendance(student.id, studentItem);
+        });
+        
+        // إضافة دعم اللمس لزر التغييب
+        absenceToggle.addEventListener('touchend', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleStudentAttendance(student.id, studentItem);
+        });
+      } else {
+        // إضافة مستمع لإظهار رسالة للطلاب المتأخرين
+        studentItem.addEventListener('click', function(e) {
+          e.preventDefault();
+          showToast('لا يمكن تغيير حالة الطالب المتأخر', 'warning');
+        });
+      }
       
       studentsList.appendChild(studentItem);
     });
@@ -999,6 +1024,33 @@ async function loadAttendancePage() {
       </div>
     `;
     showNotification('فشل في تحميل قائمة الطلاب: ' + error.message, 'error');
+  }
+}
+
+// فحص الطلاب المتأخرين لليوم الحالي
+async function checkLateStudentsForToday(studentIds) {
+  if (!studentIds || studentIds.length === 0) return [];
+  
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?date=${today}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      // إرجاع قائمة IDs للطلاب المتأخرين
+      return result.data.map(late => late.student_id);
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('خطأ في فحص الطلاب المتأخرين:', error);
+    return [];
   }
 }
 
@@ -1198,6 +1250,9 @@ async function showAdminSection(sectionName) {
       case 'approval':
         content = getApprovalContent();
         break;
+      case 'late-arrivals':
+        content = await getLateArrivalsContent();
+        break;
       case 'import':
         showImportSection();
         return; // لأن showImportSection تعمل مباشرة على المحتوى
@@ -1213,6 +1268,8 @@ async function showAdminSection(sectionName) {
     // إضافة مستمعي الأحداث للأزرار الجديدة
     if (sectionName === 'approval') {
       setupApprovalButtons();
+    } else if (sectionName === 'late-arrivals') {
+      setupLateArrivalsButtons();
     }
   } catch (error) {
     adminContent.innerHTML = `
@@ -6040,8 +6097,577 @@ function openWhatsappManager() {
       whatsappWindow.postMessage({
         type: 'USER_DATA',
         token: localStorage.getItem('auth_token'),
-        user: localStorage.getItem('user_data')
       }, '*');
     }
   }, 1000);
+}
+
+// ============ وظائف إدارة التأخير ============
+
+// جلب محتوى صفحة إدارة التأخير
+async function getLateArrivalsContent() {
+  return `
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4><i class="bi bi-clock-history me-2"></i>إدارة التأخير</h4>
+      <button class="btn btn-primary" onclick="showAddLateArrivalModal()">
+        <i class="bi bi-plus-circle me-2"></i>تسجيل تأخير جديد
+      </button>
+    </div>
+    
+    <!-- إحصائيات التأخير -->
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div class="card bg-warning text-white">
+          <div class="card-body text-center">
+            <i class="bi bi-clock-history display-4 mb-2"></i>
+            <h3 id="lateStudentsToday">0</h3>
+            <small>متأخرين اليوم</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card bg-info text-white">
+          <div class="card-body text-center">
+            <i class="bi bi-calendar-week display-4 mb-2"></i>
+            <h3 id="lateStudentsWeek">0</h3>
+            <small>متأخرين هذا الأسبوع</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card bg-secondary text-white">
+          <div class="card-body text-center">
+            <i class="bi bi-whatsapp display-4 mb-2"></i>
+            <h3 id="messagesSentToday">0</h3>
+            <small>رسائل مرسلة اليوم</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- فلتر البيانات -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-3">
+            <label class="form-label">التاريخ</label>
+            <input type="date" class="form-control" id="lateFilterDate" value="${new Date().toISOString().split('T')[0]}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">الفصل</label>
+            <select class="form-select" id="lateFilterClass">
+              <option value="">جميع الفصول</option>
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-secondary me-2" onclick="loadLateArrivals()">
+              <i class="bi bi-search me-2"></i>بحث
+            </button>
+            <button class="btn btn-outline-secondary" onclick="exportLateArrivals()">
+              <i class="bi bi-download me-2"></i>تصدير
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- قائمة الطلاب المتأخرين -->
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">الطلاب المتأخرين</h5>
+      </div>
+      <div class="card-body">
+        <div id="lateArrivalsTable">
+          <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2">جاري تحميل البيانات...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// إعداد أزرار إدارة التأخير
+function setupLateArrivalsButtons() {
+  // تحميل البيانات الأولية
+  loadLateArrivals();
+  loadClassesForFilter();
+  loadLateArrivalsStats();
+  
+  // إضافة مستمع لتغيير التاريخ
+  document.getElementById('lateFilterDate').addEventListener('change', loadLateArrivals);
+  document.getElementById('lateFilterClass').addEventListener('change', loadLateArrivals);
+}
+
+// تحميل قائمة الطلاب المتأخرين
+async function loadLateArrivals() {
+  const tableContainer = document.getElementById('lateArrivalsTable');
+  if (!tableContainer) return;
+  
+  tableContainer.innerHTML = `
+    <div class="text-center py-4">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div class="mt-2">جاري تحميل البيانات...</div>
+    </div>
+  `;
+  
+  try {
+    const date = document.getElementById('lateFilterDate').value;
+    const classFilter = document.getElementById('lateFilterClass').value;
+    
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    if (classFilter) params.append('class', classFilter);
+    
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      displayLateArrivals(result.data);
+    } else {
+      tableContainer.innerHTML = `
+        <div class="alert alert-warning text-center">
+          <i class="bi bi-info-circle me-2"></i>
+          لا توجد بيانات تأخير للعرض
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل بيانات التأخير:', error);
+    tableContainer.innerHTML = `
+      <div class="alert alert-danger text-center">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        حدث خطأ في تحميل البيانات
+      </div>
+    `;
+  }
+}
+
+// عرض قائمة الطلاب المتأخرين
+function displayLateArrivals(lateArrivals) {
+  const tableContainer = document.getElementById('lateArrivalsTable');
+  
+  if (!lateArrivals || lateArrivals.length === 0) {
+    tableContainer.innerHTML = `
+      <div class="alert alert-info text-center">
+        <i class="bi bi-info-circle me-2"></i>
+        لا يوجد طلاب متأخرين في هذا التاريخ
+      </div>
+    `;
+    return;
+  }
+  
+  let tableHTML = `
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>اسم الطالب</th>
+            <th>الفصل</th>
+            <th>وقت التسجيل</th>
+            <th>سجل بواسطة</th>
+            <th>حالة الرسالة</th>
+            <th>ملاحظات</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  lateArrivals.forEach(late => {
+    tableHTML += `
+      <tr>
+        <td><strong>${late.student_name}</strong></td>
+        <td><span class="badge bg-secondary">${late.student_class || 'غير محدد'}</span></td>
+        <td>${formatDateTime(late.recorded_at)}</td>
+        <td>${late.recorded_by_name}</td>
+        <td>
+          ${late.whatsapp_sent ? 
+            '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>تم الإرسال</span>' : 
+            '<span class="badge bg-warning"><i class="bi bi-clock me-1"></i>في الانتظار</span>'
+          }
+        </td>
+        <td>${late.notes || '-'}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-danger" onclick="removeLateArrival(${late.id})" title="حذف">
+            <i class="bi bi-trash"></i>
+          </button>
+          ${!late.whatsapp_sent ? 
+            `<button class="btn btn-sm btn-outline-primary ms-1" onclick="sendLateMessage(${late.id})" title="إرسال رسالة">
+              <i class="bi bi-whatsapp"></i>
+            </button>` : ''
+          }
+        </td>
+      </tr>
+    `;
+  });
+  
+  tableHTML += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  
+  tableContainer.innerHTML = tableHTML;
+}
+
+// تحميل إحصائيات التأخير
+async function loadLateArrivalsStats() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/stats`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      document.getElementById('lateStudentsToday').textContent = result.data.today || 0;
+      document.getElementById('lateStudentsWeek').textContent = result.data.week || 0;
+      document.getElementById('messagesSentToday').textContent = result.data.messages_sent || 0;
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل إحصائيات التأخير:', error);
+  }
+}
+
+// تحميل قائمة الفصول للفلتر
+async function loadClassesForFilter() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/students`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      const classes = [...new Set(result.data.map(student => student.class).filter(Boolean))];
+      const classSelect = document.getElementById('lateFilterClass');
+      
+      classes.forEach(className => {
+        const option = document.createElement('option');
+        option.value = className;
+        option.textContent = className;
+        classSelect.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل قائمة الفصول:', error);
+  }
+}
+
+// عرض نافذة تسجيل تأخير جديد
+function showAddLateArrivalModal() {
+  const modalHTML = `
+    <div class="modal fade" id="addLateArrivalModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">تسجيل تأخير جديد</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="addLateArrivalForm">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">الفصل</label>
+                  <select class="form-select" id="lateArrivalClass" required>
+                    <option value="">اختر الفصل</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">التاريخ</label>
+                  <input type="date" class="form-control" id="lateArrivalDate" value="${new Date().toISOString().split('T')[0]}" required>
+                </div>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">الطلاب</label>
+                <div id="studentsContainer" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                  <div class="text-center text-muted">اختر الفصل أولاً</div>
+                </div>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">ملاحظات (اختياري)</label>
+                <textarea class="form-control" id="lateArrivalNotes" rows="3" placeholder="أي ملاحظات إضافية..."></textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="button" class="btn btn-primary" onclick="submitLateArrival()">
+              <i class="bi bi-check-circle me-2"></i>تسجيل التأخير
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // إزالة أي modal موجود مسبقاً
+  const existingModal = document.getElementById('addLateArrivalModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // إضافة المودال للصفحة
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+  
+  // تحميل قائمة الفصول
+  loadClassesForLateModal();
+  
+  // إظهار المودال
+  const modal = new bootstrap.Modal(document.getElementById('addLateArrivalModal'));
+  modal.show();
+  
+  // إضافة مستمع لتغيير الفصل
+  document.getElementById('lateArrivalClass').addEventListener('change', loadStudentsForLateModal);
+}
+
+// تحميل قائمة الفصول في مودال التأخير
+async function loadClassesForLateModal() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/students`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      const classes = [...new Set(result.data.map(student => student.class).filter(Boolean))];
+      const classSelect = document.getElementById('lateArrivalClass');
+      
+      classes.forEach(className => {
+        const option = document.createElement('option');
+        option.value = className;
+        option.textContent = className;
+        classSelect.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل قائمة الفصول:', error);
+  }
+}
+
+// تحميل طلاب الفصل في مودال التأخير
+async function loadStudentsForLateModal() {
+  const className = document.getElementById('lateArrivalClass').value;
+  const studentsContainer = document.getElementById('studentsContainer');
+  
+  if (!className) {
+    studentsContainer.innerHTML = '<div class="text-center text-muted">اختر الفصل أولاً</div>';
+    return;
+  }
+  
+  studentsContainer.innerHTML = `
+    <div class="text-center">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      <div class="mt-2">جاري تحميل الطلاب...</div>
+    </div>
+  `;
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/students?class=${encodeURIComponent(className)}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      displayStudentsForLateSelection(result.data);
+    } else {
+      studentsContainer.innerHTML = '<div class="text-center text-muted">لا يوجد طلاب في هذا الفصل</div>';
+    }
+  } catch (error) {
+    console.error('خطأ في تحميل طلاب الفصل:', error);
+    studentsContainer.innerHTML = '<div class="text-center text-danger">حدث خطأ في تحميل الطلاب</div>';
+  }
+}
+
+// عرض طلاب الفصل للاختيار
+function displayStudentsForLateSelection(students) {
+  const studentsContainer = document.getElementById('studentsContainer');
+  
+  if (!students || students.length === 0) {
+    studentsContainer.innerHTML = '<div class="text-center text-muted">لا يوجد طلاب في هذا الفصل</div>';
+    return;
+  }
+  
+  let studentsHTML = '<div class="row">';
+  
+  students.forEach(student => {
+    studentsHTML += `
+      <div class="col-md-6 mb-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="${student.id}" id="student_${student.id}">
+          <label class="form-check-label" for="student_${student.id}">
+            ${student.name}
+          </label>
+        </div>
+      </div>
+    `;
+  });
+  
+  studentsHTML += '</div>';
+  studentsContainer.innerHTML = studentsHTML;
+}
+
+// تسجيل التأخير
+async function submitLateArrival() {
+  const selectedStudents = [];
+  const checkboxes = document.querySelectorAll('#studentsContainer input[type="checkbox"]:checked');
+  
+  checkboxes.forEach(checkbox => {
+    selectedStudents.push(parseInt(checkbox.value));
+  });
+  
+  if (selectedStudents.length === 0) {
+    showToast('يرجى اختيار طالب واحد على الأقل', 'warning');
+    return;
+  }
+  
+  const formData = {
+    student_ids: selectedStudents,
+    late_date: document.getElementById('lateArrivalDate').value,
+    notes: document.getElementById('lateArrivalNotes').value
+  };
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showToast('تم تسجيل التأخير بنجاح وإرسال الرسائل', 'success');
+      
+      // إغلاق المودال
+      const modal = bootstrap.Modal.getInstance(document.getElementById('addLateArrivalModal'));
+      modal.hide();
+      
+      // إعادة تحميل البيانات
+      loadLateArrivals();
+      loadLateArrivalsStats();
+    } else {
+      showToast(result.message || 'حدث خطأ في تسجيل التأخير', 'error');
+    }
+  } catch (error) {
+    console.error('خطأ في تسجيل التأخير:', error);
+    showToast('حدث خطأ في الاتصال', 'error');
+  }
+}
+
+// حذف تأخير
+async function removeLateArrival(lateId) {
+  if (!confirm('هل أنت متأكد من حذف هذا التأخير؟')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/${lateId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showToast('تم حذف التأخير بنجاح', 'success');
+      loadLateArrivals();
+      loadLateArrivalsStats();
+    } else {
+      showToast(result.message || 'حدث خطأ في حذف التأخير', 'error');
+    }
+  } catch (error) {
+    console.error('خطأ في حذف التأخير:', error);
+    showToast('حدث خطأ في الاتصال', 'error');
+  }
+}
+
+// إرسال رسالة تأخير
+async function sendLateMessage(lateId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/${lateId}/send-message`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showToast('تم إرسال رسالة التأخير بنجاح', 'success');
+      loadLateArrivals();
+    } else {
+      showToast(result.message || 'حدث خطأ في إرسال الرسالة', 'error');
+    }
+  } catch (error) {
+    console.error('خطأ في إرسال رسالة التأخير:', error);
+    showToast('حدث خطأ في الاتصال', 'error');
+  }
+}
+
+// تصدير بيانات التأخير
+function exportLateArrivals() {
+  const date = document.getElementById('lateFilterDate').value;
+  const classFilter = document.getElementById('lateFilterClass').value;
+  
+  const params = new URLSearchParams();
+  if (date) params.append('date', date);
+  if (classFilter) params.append('class', classFilter);
+  params.append('export', 'excel');
+  
+  const url = `${API_BASE_URL}/admin/late-arrivals/export?${params}`;
+  
+  // إنشاء رابط تحميل مؤقت
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `late_arrivals_${date || 'all'}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// وظيفة مساعدة لتنسيق التاريخ والوقت
+function formatDateTime(datetime) {
+  if (!datetime) return '-';
+  
+  const date = new Date(datetime);
+  return date.toLocaleString('ar-SA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
