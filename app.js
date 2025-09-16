@@ -6412,14 +6412,7 @@ function showAddLateArrivalModal() {
 // تحميل قائمة الفصول في مودال التأخير
 async function loadClassesForLateModal() {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/students`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', '/admin/students');
     
     if (result.success && result.data) {
       const classes = [...new Set(result.data.map(student => student.class).filter(Boolean))];
