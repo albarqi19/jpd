@@ -6329,8 +6329,8 @@ async function loadClassesForFilter() {
       
       result.data.forEach(classInfo => {
         const option = document.createElement('option');
-        option.value = classInfo.full_name; // الاسم الكامل للفصل
-        option.textContent = classInfo.full_name; // عرض الاسم الكامل
+        option.value = classInfo.name; // استخدام name بدلاً من full_name
+        option.textContent = classInfo.name; // عرض الاسم الكامل
         classSelect.appendChild(option);
       });
     }
