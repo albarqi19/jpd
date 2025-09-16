@@ -1033,15 +1033,7 @@ async function checkLateStudentsForToday(studentIds) {
   
   try {
     const today = new Date().toISOString().split('T')[0];
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?date=${today}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', `/admin/late-arrivals?date=${today}`);
     
     if (result.success && result.data) {
       // إرجاع قائمة IDs للطلاب المتأخرين
@@ -6221,15 +6213,7 @@ async function loadLateArrivals() {
     if (date) params.append('date', date);
     if (classFilter) params.append('class', classFilter);
     
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals?${params}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', `/admin/late-arrivals?${params}`);
     
     if (result.success && result.data) {
       displayLateArrivals(result.data);
@@ -6323,15 +6307,7 @@ function displayLateArrivals(lateArrivals) {
 // تحميل إحصائيات التأخير
 async function loadLateArrivalsStats() {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/stats`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', '/admin/late-arrivals/stats');
     
     if (result.success && result.data) {
       document.getElementById('lateStudentsToday').textContent = result.data.today || 0;
@@ -6346,15 +6322,7 @@ async function loadLateArrivalsStats() {
 // تحميل قائمة الفصول للفلتر
 async function loadClassesForFilter() {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/students`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', '/admin/students');
     
     if (result.success && result.data) {
       const classes = [...new Set(result.data.map(student => student.class).filter(Boolean))];
@@ -6487,14 +6455,7 @@ async function loadStudentsForLateModal() {
   `;
   
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/students?class=${encodeURIComponent(className)}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('GET', `/admin/students?class=${encodeURIComponent(className)}`);
     
     if (result.success && result.data) {
       displayStudentsForLateSelection(result.data);
@@ -6556,16 +6517,7 @@ async function submitLateArrival() {
   };
   
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(formData)
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('POST', '/admin/late-arrivals', formData);
     
     if (result.success) {
       showToast('تم تسجيل التأخير بنجاح وإرسال الرسائل', 'success');
@@ -6593,15 +6545,7 @@ async function removeLateArrival(lateId) {
   }
   
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/${lateId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('DELETE', `/admin/late-arrivals/${lateId}`);
     
     if (result.success) {
       showToast('تم حذف التأخير بنجاح', 'success');
@@ -6619,15 +6563,7 @@ async function removeLateArrival(lateId) {
 // إرسال رسالة تأخير
 async function sendLateMessage(lateId) {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/late-arrivals/${lateId}/send-message`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const result = await response.json();
+    const result = await apiService.request('POST', `/admin/late-arrivals/${lateId}/send-message`);
     
     if (result.success) {
       showToast('تم إرسال رسالة التأخير بنجاح', 'success');
