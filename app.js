@@ -6322,16 +6322,15 @@ async function loadLateArrivalsStats() {
 // تحميل قائمة الفصول للفلتر
 async function loadClassesForFilter() {
   try {
-    const result = await apiService.request('GET', '/admin/students');
+    const result = await apiService.request('GET', '/admin/class-schedules/classes');
     
     if (result.success && result.data) {
-      const classes = [...new Set(result.data.map(student => student.class_name).filter(Boolean))];
       const classSelect = document.getElementById('lateFilterClass');
       
-      classes.forEach(className => {
+      result.data.forEach(classInfo => {
         const option = document.createElement('option');
-        option.value = className;
-        option.textContent = className;
+        option.value = classInfo.full_name; // الاسم الكامل للفصل
+        option.textContent = classInfo.full_name; // عرض الاسم الكامل
         classSelect.appendChild(option);
       });
     }
@@ -6412,19 +6411,18 @@ function showAddLateArrivalModal() {
 // تحميل قائمة الفصول في مودال التأخير
 async function loadClassesForLateModal() {
   try {
-    const result = await apiService.request('GET', '/admin/students');
+    const result = await apiService.request('GET', '/admin/class-schedules/classes');
     
     if (result.success && result.data) {
-      const classes = [...new Set(result.data.map(student => student.class_name).filter(Boolean))];
       const classSelect = document.getElementById('lateArrivalClass');
       
       // مسح الخيارات الموجودة أولاً
       classSelect.innerHTML = '<option value="">اختر الفصل</option>';
       
-      classes.forEach(className => {
+      result.data.forEach(classInfo => {
         const option = document.createElement('option');
-        option.value = className;
-        option.textContent = className;
+        option.value = classInfo.full_name; // الاسم الكامل للفصل
+        option.textContent = classInfo.full_name; // عرض الاسم الكامل
         classSelect.appendChild(option);
       });
     }
