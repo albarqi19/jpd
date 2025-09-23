@@ -1,6 +1,19 @@
 // بيانات التطبيق
 const API_BASE_URL = 'https://sternmost-junita-indiscriminately.ngrok-free.app/api';
 
+// وظيفة مساعدة لتأخير التنفيذ (debounce)
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // وظيفة مساعدة لتنسيق التوقيت
 function formatTime(timeString) {
   if (!timeString) return '';
@@ -6343,7 +6356,7 @@ async function loadClassesForFilter() {
 function showAddLateArrivalModal() {
   const modalHTML = `
     <div class="modal fade" id="addLateArrivalModal" tabindex="-1">
-      <div class="modal-dialog modal-lg">
+      <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">تسجيل تأخير جديد</h5>
@@ -6351,29 +6364,63 @@ function showAddLateArrivalModal() {
           </div>
           <div class="modal-body">
             <form id="addLateArrivalForm">
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label class="form-label">الفصل</label>
-                  <select class="form-select" id="lateArrivalClass" required>
-                    <option value="">اختر الفصل</option>
-                  </select>
-                </div>
-                <div class="col-md-6 mb-3">
+              <div class="row mb-3">
+                <div class="col-md-6">
                   <label class="form-label">التاريخ</label>
                   <input type="date" class="form-control" id="lateArrivalDate" value="${new Date().toISOString().split('T')[0]}" required>
                 </div>
-              </div>
-              
-              <div class="mb-3">
-                <label class="form-label">الطلاب</label>
-                <div id="studentsContainer" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
-                  <div class="text-center text-muted">اختر الفصل أولاً</div>
+                <div class="col-md-6">
+                  <label class="form-label">ملاحظات (اختياري)</label>
+                  <textarea class="form-control" id="lateArrivalNotes" rows="2" placeholder="أي ملاحظات إضافية..."></textarea>
                 </div>
               </div>
               
+              <!-- خيارات البحث -->
+              <div class="card mb-3">
+                <div class="card-header">
+                  <h6 class="mb-0"><i class="bi bi-search me-2"></i>البحث عن الطلاب</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label class="form-label">البحث بالاسم</label>
+                      <div class="input-group">
+                        <input type="text" class="form-control" id="studentNameSearch" placeholder="ابحث عن الطالب بالاسم...">
+                        <button class="btn btn-outline-primary" type="button" onclick="searchStudentsByName()">
+                          <i class="bi bi-search"></i>
+                        </button>
+                      </div>
+                      <small class="text-muted">البحث في جميع الفصول</small>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                      <label class="form-label">البحث بالفصل</label>
+                      <select class="form-select" id="lateArrivalClass">
+                        <option value="">جميع الفصول</option>
+                      </select>
+                      <small class="text-muted">البحث في فصل محدد</small>
+                    </div>
+                  </div>
+                  
+                  <div class="d-flex gap-2 mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="loadAllStudents()">
+                      <i class="bi bi-people me-1"></i>عرض جميع الطلاب
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="clearStudentSelection()">
+                      <i class="bi bi-x-circle me-1"></i>مسح التحديد
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- نتائج البحث -->
               <div class="mb-3">
-                <label class="form-label">ملاحظات (اختياري)</label>
-                <textarea class="form-control" id="lateArrivalNotes" rows="3" placeholder="أي ملاحظات إضافية..."></textarea>
+                <label class="form-label">الطلاب <span id="studentsCount" class="badge bg-secondary">0</span></label>
+                <div id="studentsContainer" class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+                  <div class="text-center text-muted">
+                    <i class="bi bi-search display-4 mb-2"></i>
+                    <p>استخدم خيارات البحث أعلاه للعثور على الطلاب</p>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
@@ -6404,8 +6451,15 @@ function showAddLateArrivalModal() {
   const modal = new bootstrap.Modal(document.getElementById('addLateArrivalModal'));
   modal.show();
   
-  // إضافة مستمع لتغيير الفصل
-  document.getElementById('lateArrivalClass').addEventListener('change', loadStudentsForLateModal);
+  // إضافة مستمعين للأحداث
+  document.getElementById('lateArrivalClass').addEventListener('change', filterStudentsByClass);
+  document.getElementById('studentNameSearch').addEventListener('keyup', debounce(searchStudentsByName, 300));
+  document.getElementById('studentNameSearch').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      searchStudentsByName();
+    }
+  });
 }
 
 // تحميل قائمة الفصول في مودال التأخير
@@ -6416,13 +6470,13 @@ async function loadClassesForLateModal() {
     if (result.success && result.data) {
       const classSelect = document.getElementById('lateArrivalClass');
       
-      // مسح الخيارات الموجودة أولاً
-      classSelect.innerHTML = '<option value="">اختر الفصل</option>';
+      // مسح الخيارات الموجودة أولاً (عدا "جميع الفصول")
+      classSelect.innerHTML = '<option value="">جميع الفصول</option>';
       
       result.data.forEach(classInfo => {
         const option = document.createElement('option');
-        option.value = classInfo.name; // استخدام name بدلاً من full_name
-        option.textContent = classInfo.name; // عرض الاسم الكامل
+        option.value = classInfo.name;
+        option.textContent = classInfo.name;
         classSelect.appendChild(option);
       });
     }
@@ -6431,63 +6485,252 @@ async function loadClassesForLateModal() {
   }
 }
 
-// تحميل طلاب الفصل في مودال التأخير
-async function loadStudentsForLateModal() {
-  const className = document.getElementById('lateArrivalClass').value;
-  const studentsContainer = document.getElementById('studentsContainer');
+// البحث عن الطلاب بالاسم في جميع الفصول
+async function searchStudentsByName() {
+  const searchTerm = document.getElementById('studentNameSearch').value.trim();
+  const selectedClass = document.getElementById('lateArrivalClass').value;
   
-  if (!className) {
-    studentsContainer.innerHTML = '<div class="text-center text-muted">اختر الفصل أولاً</div>';
+  // إذا لم يكن هناك مصطلح بحث ولا فصل محدد، إظهار رسالة
+  if (!searchTerm && !selectedClass) {
+    showEmptyStudentsMessage('أدخل اسم الطالب أو اختر فصلاً للبحث');
     return;
   }
   
+  // إذا كان مصطلح البحث قصيراً جداً، لا تبحث
+  if (searchTerm && searchTerm.length < 2) {
+    showEmptyStudentsMessage('أدخل على الأقل حرفين للبحث');
+    return;
+  }
+  
+  const studentsContainer = document.getElementById('studentsContainer');
   studentsContainer.innerHTML = `
     <div class="text-center">
       <div class="spinner-border spinner-border-sm" role="status"></div>
-      <div class="mt-2">جاري تحميل الطلاب...</div>
+      <div class="mt-2">جاري البحث...</div>
     </div>
   `;
   
   try {
-    const result = await apiService.request('GET', `/admin/students?class=${encodeURIComponent(className)}`);
+    let url = '/admin/students?';
+    const params = [];
+    
+    if (searchTerm) {
+      params.push(`search=${encodeURIComponent(searchTerm)}`);
+    }
+    
+    if (selectedClass) {
+      params.push(`class=${encodeURIComponent(selectedClass)}`);
+    }
+    
+    url += params.join('&');
+    
+    const result = await apiService.request('GET', url);
+    
+    if (result.success && result.data) {
+      // تصفية النتائج إضافياً على الواجهة للتأكد
+      let filteredStudents = result.data;
+      
+      if (searchTerm) {
+        filteredStudents = result.data.filter(student => 
+          student.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+      
+      if (filteredStudents.length > 0) {
+        displayStudentsForLateSelection(filteredStudents, searchTerm);
+      } else {
+        showEmptyStudentsMessage(`لم يتم العثور على طلاب باسم "${searchTerm}"`);
+      }
+    } else {
+      showEmptyStudentsMessage('لم يتم العثور على طلاب مطابقين للبحث');
+    }
+  } catch (error) {
+    console.error('خطأ في البحث عن الطلاب:', error);
+    studentsContainer.innerHTML = '<div class="text-center text-danger">حدث خطأ في البحث</div>';
+  }
+}
+
+// تصفية الطلاب حسب الفصل المحدد
+async function filterStudentsByClass() {
+  const selectedClass = document.getElementById('lateArrivalClass').value;
+  const searchTerm = document.getElementById('studentNameSearch').value.trim();
+  
+  if (!selectedClass && !searchTerm) {
+    showEmptyStudentsMessage('اختر فصلاً أو أدخل اسم الطالب للبحث');
+    return;
+  }
+  
+  // استدعاء البحث مع الفصل المحدد
+  await searchStudentsByName();
+}
+
+// تحميل جميع الطلاب
+async function loadAllStudents() {
+  const studentsContainer = document.getElementById('studentsContainer');
+  studentsContainer.innerHTML = `
+    <div class="text-center">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      <div class="mt-2">جاري تحميل جميع الطلاب...</div>
+    </div>
+  `;
+  
+  try {
+    const result = await apiService.request('GET', '/admin/students');
     
     if (result.success && result.data) {
       displayStudentsForLateSelection(result.data);
     } else {
-      studentsContainer.innerHTML = '<div class="text-center text-muted">لا يوجد طلاب في هذا الفصل</div>';
+      showEmptyStudentsMessage('لا يوجد طلاب في قاعدة البيانات');
     }
   } catch (error) {
-    console.error('خطأ في تحميل طلاب الفصل:', error);
+    console.error('خطأ في تحميل الطلاب:', error);
     studentsContainer.innerHTML = '<div class="text-center text-danger">حدث خطأ في تحميل الطلاب</div>';
   }
 }
 
+// مسح تحديد الطلاب
+function clearStudentSelection() {
+  const checkboxes = document.querySelectorAll('#studentsContainer input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = false;
+  });
+  updateStudentsCount();
+  showToast('تم مسح التحديد', 'info');
+}
+
+// عرض رسالة فارغة
+function showEmptyStudentsMessage(message) {
+  const studentsContainer = document.getElementById('studentsContainer');
+  studentsContainer.innerHTML = `
+    <div class="text-center text-muted">
+      <i class="bi bi-search display-4 mb-2"></i>
+      <p>${message}</p>
+    </div>
+  `;
+  updateStudentsCount(0);
+}
+
 // عرض طلاب الفصل للاختيار
-function displayStudentsForLateSelection(students) {
+function displayStudentsForLateSelection(students, searchTerm = '') {
   const studentsContainer = document.getElementById('studentsContainer');
   
   if (!students || students.length === 0) {
-    studentsContainer.innerHTML = '<div class="text-center text-muted">لا يوجد طلاب في هذا الفصل</div>';
+    showEmptyStudentsMessage('لم يتم العثور على طلاب');
     return;
   }
   
-  let studentsHTML = '<div class="row">';
-  
+  // تجميع الطلاب حسب الفصل للعرض المنظم
+  const studentsByClass = {};
   students.forEach(student => {
+    const className = student.class_name || student.grade + ' ' + student.class_name || 'غير محدد';
+    if (!studentsByClass[className]) {
+      studentsByClass[className] = [];
+    }
+    studentsByClass[className].push(student);
+  });
+  
+  let studentsHTML = '';
+  
+  // عرض نتائج البحث إذا وُجد مصطلح بحث
+  if (searchTerm) {
     studentsHTML += `
-      <div class="col-md-6 mb-2">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="${student.id}" id="student_${student.id}">
-          <label class="form-check-label" for="student_${student.id}">
-            ${student.name}
-          </label>
+      <div class="alert alert-info mb-3">
+        <i class="bi bi-search me-2"></i>
+        نتائج البحث عن: <strong>"${searchTerm}"</strong> 
+        <span class="badge bg-primary ms-2">${students.length} طالب</span>
+      </div>
+    `;
+  }
+  
+  // عرض الطلاب مجمعين حسب الفصل
+  Object.keys(studentsByClass).sort().forEach(className => {
+    const classStudents = studentsByClass[className];
+    
+    studentsHTML += `
+      <div class="card mb-3">
+        <div class="card-header py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+              <i class="bi bi-mortarboard me-2"></i>${className}
+            </h6>
+            <div>
+              <span class="badge bg-secondary">${classStudents.length} طالب</span>
+              <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="selectAllInClass('${className}')">
+                <i class="bi bi-check-all me-1"></i>تحديد الكل
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+    `;
+    
+    classStudents.forEach(student => {
+      // تمييز النص المطابق للبحث
+      let displayName = student.name;
+      if (searchTerm && searchTerm.length > 0) {
+        const regex = new RegExp(`(${searchTerm})`, 'gi');
+        displayName = student.name.replace(regex, '<mark>$1</mark>');
+      }
+      
+      studentsHTML += `
+        <div class="col-md-6 col-lg-4 mb-2">
+          <div class="form-check">
+            <input class="form-check-input student-checkbox" 
+                   type="checkbox" 
+                   value="${student.id}" 
+                   id="student_${student.id}"
+                   data-class="${className}"
+                   onchange="updateStudentsCount()">
+            <label class="form-check-label" for="student_${student.id}">
+              <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                  <div class="fw-medium">${displayName}</div>
+                  ${student.national_id ? `<small class="text-muted">هوية: ${student.national_id}</small>` : ''}
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+      `;
+    });
+    
+    studentsHTML += `
+          </div>
         </div>
       </div>
     `;
   });
   
-  studentsHTML += '</div>';
   studentsContainer.innerHTML = studentsHTML;
+  updateStudentsCount();
+}
+
+// تحديد جميع الطلاب في فصل معين
+function selectAllInClass(className) {
+  const classCheckboxes = document.querySelectorAll(`input[data-class="${className}"]`);
+  const allChecked = Array.from(classCheckboxes).every(cb => cb.checked);
+  
+  classCheckboxes.forEach(checkbox => {
+    checkbox.checked = !allChecked;
+  });
+  
+  updateStudentsCount();
+  
+  const action = allChecked ? 'إلغاء تحديد' : 'تحديد';
+  showToast(`تم ${action} جميع طلاب ${className}`, 'success');
+}
+
+// تحديث عدد الطلاب المحددين
+function updateStudentsCount() {
+  const selectedCount = document.querySelectorAll('#studentsContainer input[type="checkbox"]:checked').length;
+  const totalCount = document.querySelectorAll('#studentsContainer input[type="checkbox"]').length;
+  
+  const countBadge = document.getElementById('studentsCount');
+  if (countBadge) {
+    countBadge.textContent = `${selectedCount}/${totalCount}`;
+    countBadge.className = selectedCount > 0 ? 'badge bg-success' : 'badge bg-secondary';
+  }
 }
 
 // تسجيل التأخير
@@ -6504,31 +6747,48 @@ async function submitLateArrival() {
     return;
   }
   
+  const lateDate = document.getElementById('lateArrivalDate').value;
+  if (!lateDate) {
+    showToast('يرجى تحديد تاريخ التأخير', 'warning');
+    return;
+  }
+  
   const formData = {
     student_ids: selectedStudents,
-    late_date: document.getElementById('lateArrivalDate').value,
+    late_date: lateDate,
     notes: document.getElementById('lateArrivalNotes').value
   };
+  
+  // تعطيل زر التسجيل أثناء المعالجة
+  const submitBtn = document.querySelector('#addLateArrivalModal .btn-primary');
+  const originalText = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>جاري التسجيل...';
   
   try {
     const result = await apiService.request('POST', '/admin/late-arrivals', formData);
     
     if (result.success) {
-      showToast('تم تسجيل التأخير بنجاح وإرسال الرسائل', 'success');
+      showToast(`تم تسجيل التأخير لـ ${selectedStudents.length} طالب وإرسال الرسائل`, 'success');
       
       // إغلاق المودال
       const modal = bootstrap.Modal.getInstance(document.getElementById('addLateArrivalModal'));
       modal.hide();
       
-      // إعادة تحميل البيانات
-      loadLateArrivals();
-      loadLateArrivalsStats();
+      // تحديث قائمة التأخيرات
+      if (typeof loadLateArrivals === 'function') {
+        await loadLateArrivals();
+      }
     } else {
-      showToast(result.message || 'حدث خطأ في تسجيل التأخير', 'error');
+      showToast(result.message || 'حدث خطأ في تسجيل التأخير', 'danger');
     }
   } catch (error) {
     console.error('خطأ في تسجيل التأخير:', error);
-    showToast('حدث خطأ في الاتصال', 'error');
+    showToast('حدث خطأ في تسجيل التأخير', 'danger');
+  } finally {
+    // إعادة تمكين الزر
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
   }
 }
 
