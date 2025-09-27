@@ -1,5 +1,5 @@
 // بيانات التطبيق
-const API_BASE_URL = 'https://sternmost-junita-indiscriminately.ngrok-free.app/api';
+const API_BASE_URL = 'https://roseanne-nonrestricting-arnoldo.ngrok-free.dev/api';
 
 // وظيفة مساعدة لتأخير التنفيذ (debounce)
 function debounce(func, wait) {

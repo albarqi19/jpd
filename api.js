@@ -1,7 +1,7 @@
 // خدمة API للتواصل مع Laravel
 class ApiService {
   constructor() {
-    this.baseURL = 'https://sternmost-junita-indiscriminately.ngrok-free.app/api';
+    this.baseURL = 'https://roseanne-nonrestricting-arnoldo.ngrok-free.dev/api';
     this.loadToken(); // تحميل التوكن من localStorage
   }
 
