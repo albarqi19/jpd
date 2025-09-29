@@ -1834,6 +1834,8 @@ function showImportSection() {
 }
 
 // استيراد الطلاب
+let previewData = null; // لحفظ بيانات المعاينة
+
 async function importStudents() {
   const fileInput = document.getElementById('studentsFile');
   const file = fileInput.files[0];
@@ -1847,13 +1849,292 @@ async function importStudents() {
   formData.append('file', file);
 
   try {
-    showNotification('جاري استيراد الطلاب...', 'info');
+    showNotification('جاري تحليل الملف...', 'info');
+    const result = await apiService.previewImportStudents(formData);
+    
+    if (result.success) {
+      previewData = result.data;
+      showPreviewModal(result.data);
+    }
+  } catch (error) {
+    showNotification(error.message || 'حدث خطأ أثناء تحليل الملف', 'error');
+  }
+}
+
+// عرض نافذة المعاينة
+function showPreviewModal(data) {
+  const modal = `
+    <div class="modal fade" id="previewModal" tabindex="-1" data-bs-backdrop="static">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header bg-primary text-white">
+            <h5 class="modal-title">
+              <i class="bi bi-eye me-2"></i>معاينة استيراد الطلاب
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <!-- الإحصائيات -->
+            <div class="row mb-4">
+              <div class="col-md-3">
+                <div class="card text-center border-success">
+                  <div class="card-body">
+                    <h3 class="text-success">${data.new_students_count}</h3>
+                    <small class="text-muted">طلاب جدد</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center border-warning">
+                  <div class="card-body">
+                    <h3 class="text-warning">${data.students_with_changes}</h3>
+                    <small class="text-muted">طلاب سيتم تحديثهم</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center border-danger">
+                  <div class="card-body">
+                    <h3 class="text-danger">${data.to_be_deleted_count}</h3>
+                    <small class="text-muted">طلاب سيتم حذفهم</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center border-info">
+                  <div class="card-body">
+                    <h3 class="text-info">${data.total_in_database}</h3>
+                    <small class="text-muted">إجمالي في النظام</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- الخيارات -->
+            <div class="card mb-3">
+              <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-gear me-2"></i>خيارات الاستيراد</h6>
+              </div>
+              <div class="card-body">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="updateExisting" ${data.students_with_changes > 0 ? 'checked' : ''}>
+                  <label class="form-check-label" for="updateExisting">
+                    <strong>تحديث بيانات الطلاب الموجودين</strong>
+                    <small class="text-muted d-block">سيتم تحديث الأسماء، الفصول، أرقام الهواتف مع الحفاظ على سجلات الحضور</small>
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="deleteMissing" ${data.to_be_deleted_count > 0 ? '' : 'disabled'}>
+                  <label class="form-check-label" for="deleteMissing">
+                    <strong class="text-danger">حذف الطلاب غير الموجودين في الملف</strong>
+                    <small class="text-muted d-block">⚠️ تحذير: سيتم حذف ${data.to_be_deleted_count} طالب غير موجودين في الملف المرفوع</small>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- التفاصيل بالتبويبات -->
+            <ul class="nav nav-tabs" role="tablist">
+              <li class="nav-item">
+                <a class="nav-link active" data-bs-toggle="tab" href="#newStudentsTab">
+                  طلاب جدد (${data.new_students_count})
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#existingStudentsTab">
+                  طلاب للتحديث (${data.students_with_changes})
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#deleteStudentsTab">
+                  طلاب للحذف (${data.to_be_deleted_count})
+                </a>
+              </li>
+              ${data.errors_count > 0 ? `
+              <li class="nav-item">
+                <a class="nav-link text-danger" data-bs-toggle="tab" href="#errorsTab">
+                  أخطاء (${data.errors_count})
+                </a>
+              </li>
+              ` : ''}
+            </ul>
+
+            <div class="tab-content border border-top-0 p-3" style="max-height: 400px; overflow-y: auto;">
+              <!-- طلاب جدد -->
+              <div class="tab-pane fade show active" id="newStudentsTab">
+                ${data.new_students_count > 0 ? `
+                  <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                      <thead class="table-success">
+                        <tr>
+                          <th>#</th>
+                          <th>الاسم</th>
+                          <th>رقم الهوية</th>
+                          <th>الصف</th>
+                          <th>الفصل</th>
+                          <th>رقم الجوال</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${data.new_students.map((student, index) => `
+                          <tr>
+                            <td>${index + 1}</td>
+                            <td>${student.name}</td>
+                            <td>${student.national_id}</td>
+                            <td>${student.grade}</td>
+                            <td>${student.class_name}</td>
+                            <td>${student.parent_phone}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                ` : '<p class="text-muted text-center py-3">لا توجد طلاب جدد للإضافة</p>'}
+              </div>
+
+              <!-- طلاب للتحديث -->
+              <div class="tab-pane fade" id="existingStudentsTab">
+                ${data.students_with_changes > 0 ? `
+                  <div class="table-responsive">
+                    <table class="table table-sm">
+                      <thead class="table-warning">
+                        <tr>
+                          <th>#</th>
+                          <th>الاسم</th>
+                          <th>رقم الهوية</th>
+                          <th>التغييرات</th>
+                          <th>سجلات الحضور</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${data.existing_students.filter(s => s.has_changes).map((student, index) => `
+                          <tr>
+                            <td>${index + 1}</td>
+                            <td>${student.new_data.name}</td>
+                            <td>${student.new_data.national_id}</td>
+                            <td>
+                              <small>
+                                ${Object.entries(student.changes).map(([field, change]) => {
+                                  const fieldNames = {
+                                    name: 'الاسم',
+                                    grade: 'الصف',
+                                    class_name: 'الفصل',
+                                    parent_phone: 'الجوال'
+                                  };
+                                  return `<div><strong>${fieldNames[field]}:</strong> ${change.old} → ${change.new}</div>`;
+                                }).join('')}
+                              </small>
+                            </td>
+                            <td><span class="badge bg-info">${student.attendance_count}</span></td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                ` : '<p class="text-muted text-center py-3">لا توجد تحديثات للطلاب الموجودين</p>'}
+              </div>
+
+              <!-- طلاب للحذف -->
+              <div class="tab-pane fade" id="deleteStudentsTab">
+                ${data.to_be_deleted_count > 0 ? `
+                  <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>تحذير:</strong> الطلاب التالية أسماؤهم غير موجودين في الملف المرفوع
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-sm">
+                      <thead class="table-danger">
+                        <tr>
+                          <th>#</th>
+                          <th>الاسم</th>
+                          <th>رقم الهوية</th>
+                          <th>الصف</th>
+                          <th>الفصل</th>
+                          <th>سجلات الحضور</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${data.to_be_deleted.map((student, index) => `
+                          <tr>
+                            <td>${index + 1}</td>
+                            <td>${student.name}</td>
+                            <td>${student.national_id}</td>
+                            <td>${student.grade}</td>
+                            <td>${student.class_name}</td>
+                            <td><span class="badge bg-danger">${student.attendance_count}</span></td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                ` : '<p class="text-muted text-center py-3">لن يتم حذف أي طلاب</p>'}
+              </div>
+
+              <!-- الأخطاء -->
+              ${data.errors_count > 0 ? `
+              <div class="tab-pane fade" id="errorsTab">
+                <div class="alert alert-danger">
+                  <ul class="mb-0">
+                    ${data.errors.map(error => `<li>${error}</li>`).join('')}
+                  </ul>
+                </div>
+              </div>
+              ` : ''}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle me-2"></i>إلغاء
+            </button>
+            <button type="button" class="btn btn-success" onclick="confirmImport()">
+              <i class="bi bi-check-circle me-2"></i>موافق وتطبيق التغييرات
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // إزالة أي نوافذ سابقة
+  const oldModal = document.getElementById('previewModal');
+  if (oldModal) oldModal.remove();
+
+  // إضافة النافذة الجديدة
+  document.body.insertAdjacentHTML('beforeend', modal);
+  const modalElement = new bootstrap.Modal(document.getElementById('previewModal'));
+  modalElement.show();
+}
+
+// تأكيد وتنفيذ الاستيراد
+async function confirmImport() {
+  const updateExisting = document.getElementById('updateExisting').checked;
+  const deleteMissing = document.getElementById('deleteMissing').checked;
+  const fileInput = document.getElementById('studentsFile');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    showNotification('حدث خطأ: لم يتم العثور على الملف', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('update_existing', updateExisting ? '1' : '0');
+  formData.append('delete_missing', deleteMissing ? '1' : '0');
+
+  try {
+    // إغلاق نافذة المعاينة
+    const modalElement = bootstrap.Modal.getInstance(document.getElementById('previewModal'));
+    modalElement.hide();
+
+    showNotification('جاري تطبيق التغييرات...', 'info');
     const result = await apiService.importStudents(formData);
     
     if (result.success) {
       showImportResults(result.data, 'الطلاب');
       showNotification(result.message, 'success');
-      fileInput.value = ''; // مسح الملف
+      fileInput.value = '';
+      previewData = null;
     }
   } catch (error) {
     showNotification(error.message || 'حدث خطأ أثناء استيراد الطلاب', 'error');
@@ -1892,26 +2173,55 @@ function showImportResults(data, type, credentials = null) {
   const resultsDiv = document.getElementById('importResults');
   const contentDiv = document.getElementById('importResultsContent');
   
+  // دعم النموذج الجديد والقديم
+  const newCount = data.new_count || data.imported_count || 0;
+  const updatedCount = data.updated_count || 0;
+  const deletedCount = data.deleted_count || 0;
+  const errorsCount = data.errors_count || 0;
+  const totalStudents = data.total_students || 0;
+  
   let content = `
     <div class="row mb-3">
-      <div class="col-md-4">
+      ${newCount > 0 ? `
+      <div class="col-md-3">
         <div class="text-center">
-          <h5 class="text-success">${data.imported_count}</h5>
-          <small class="text-muted">تم استيراد ${type}</small>
+          <h5 class="text-success">${newCount}</h5>
+          <small class="text-muted">تم إضافة ${type} جدد</small>
         </div>
       </div>
-      <div class="col-md-4">
+      ` : ''}
+      ${updatedCount > 0 ? `
+      <div class="col-md-3">
         <div class="text-center">
-          <h5 class="text-danger">${data.errors_count}</h5>
+          <h5 class="text-warning">${updatedCount}</h5>
+          <small class="text-muted">تم تحديث ${type}</small>
+        </div>
+      </div>
+      ` : ''}
+      ${deletedCount > 0 ? `
+      <div class="col-md-3">
+        <div class="text-center">
+          <h5 class="text-danger">${deletedCount}</h5>
+          <small class="text-muted">تم حذف ${type}</small>
+        </div>
+      </div>
+      ` : ''}
+      ${errorsCount > 0 ? `
+      <div class="col-md-3">
+        <div class="text-center">
+          <h5 class="text-danger">${errorsCount}</h5>
           <small class="text-muted">أخطاء</small>
         </div>
       </div>
-      <div class="col-md-4">
+      ` : ''}
+      ${totalStudents > 0 ? `
+      <div class="col-md-3">
         <div class="text-center">
-          <h5 class="text-info">${data.imported_count + data.errors_count}</h5>
-          <small class="text-muted">إجمالي الصفوف</small>
+          <h5 class="text-info">${totalStudents}</h5>
+          <small class="text-muted">إجمالي ${type} في النظام</small>
         </div>
       </div>
+      ` : ''}
     </div>
   `;
 

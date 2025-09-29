@@ -311,6 +311,23 @@ class ApiService {
   }
 
   // === الاستيراد ===
+  async previewImportStudents(formData) {
+    const response = await fetch(`${this.baseURL}/admin/import/students/preview`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'ngrok-skip-browser-warning': 'true'
+      },
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || 'حدث خطأ في الشبكة');
+    }
+    return result;
+  }
+
   async importStudents(formData) {
     const response = await fetch(`${this.baseURL}/admin/import/students`, {
       method: 'POST',
