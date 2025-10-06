@@ -81,14 +81,26 @@ async function loadAllStudents() {
         if (!response.ok) throw new Error('فشل تحميل الطلاب');
         
         const result = await response.json();
-        const students = result.data || result;
+        console.log('Students API Response:', result); // للتأكد
+        
+        // التعامل مع الاستجابة بشكل صحيح
+        let students = [];
+        if (result.success && result.data) {
+            students = Array.isArray(result.data) ? result.data : [];
+        } else if (Array.isArray(result)) {
+            students = result;
+        }
         
         const studentSelect = document.getElementById('studentSelect');
         studentSelect.innerHTML = '<option value="">ابحث عن طالب...</option>';
         
-        students.forEach(student => {
-            studentSelect.innerHTML += `<option value="${student.id}">${student.name} - ${student.grade} ${student.class_name}</option>`;
-        });
+        if (students.length > 0) {
+            students.forEach(student => {
+                studentSelect.innerHTML += `<option value="${student.id}">${student.name} - ${student.grade} ${student.class_name}</option>`;
+            });
+        } else {
+            showToast('لا توجد بيانات طلاب', 'warning');
+        }
         
     } catch (error) {
         console.error('خطأ في تحميل الطلاب:', error);
@@ -221,6 +233,8 @@ async function fetchAttendanceData(dateRange) {
     
     url += `&start_date=${dateRange.start}&end_date=${dateRange.end}`;
     
+    console.log('Fetching from:', url); // للتأكد
+    
     const token = localStorage.getItem('auth_token');
     const response = await fetch(url, {
         headers: {
@@ -231,10 +245,13 @@ async function fetchAttendanceData(dateRange) {
     });
     
     if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
         throw new Error('فشل جلب بيانات الحضور');
     }
     
     const result = await response.json();
+    console.log('API Response:', result); // للتأكد
     return result.data || result;
 }
 
@@ -353,10 +370,25 @@ function buildAttendanceTable(data) {
 function buildStatistics(data) {
     const stats = document.getElementById('statistics');
     
+    console.log('Building statistics for:', data.students); // للتأكد
+    
     // حساب الإجماليات
-    const totalPresent = data.students.reduce((sum, s) => sum + (s.total_present || 0), 0);
-    const totalAbsent = data.students.reduce((sum, s) => sum + (s.total_absent || 0), 0);
-    const totalLate = data.students.reduce((sum, s) => sum + (s.total_late || 0), 0);
+    const totalPresent = data.students.reduce((sum, s) => {
+        const val = parseInt(s.total_present) || 0;
+        console.log(`${s.name}: present=${val}`);
+        return sum + val;
+    }, 0);
+    const totalAbsent = data.students.reduce((sum, s) => {
+        const val = parseInt(s.total_absent) || 0;
+        console.log(`${s.name}: absent=${val}`);
+        return sum + val;
+    }, 0);
+    const totalLate = data.students.reduce((sum, s) => {
+        const val = parseInt(s.total_late) || 0;
+        return sum + val;
+    }, 0);
+    
+    console.log('Totals:', {totalPresent, totalAbsent, totalLate});
     
     stats.innerHTML = `
         <div class="stat-box present">
