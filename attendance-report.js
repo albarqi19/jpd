@@ -45,7 +45,7 @@ function loadClasses() {
     }
     
     // الفصول الافتراضية
-    const classes = ['أ', 'ب', 'ج', 'د'];
+    const classes = ['1', '2', '3', '4', '5'];
     
     classSelect.innerHTML = '<option value="">اختر الفصل</option>';
     classes.forEach(cls => {
