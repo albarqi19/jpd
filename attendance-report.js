@@ -311,6 +311,11 @@ function buildAttendanceTable(data) {
     const showAbsent = document.getElementById('showAbsent').checked;
     const showLate = document.getElementById('showLate').checked;
     
+    // خيارات الأعمدة
+    const showColumnPresent = document.getElementById('showColumnPresent').checked;
+    const showColumnAbsent = document.getElementById('showColumnAbsent').checked;
+    const showColumnLate = document.getElementById('showColumnLate').checked;
+    
     let html = '<thead><tr><th rowspan="2">#</th><th rowspan="2">الاسم</th>';
     
     // رؤوس الأعمدة (الأيام/الأسابيع)
@@ -319,7 +324,11 @@ function buildAttendanceTable(data) {
         html += `<th>${formatDateShort(new Date(date))}</th>`;
     });
     
-    html += '<th rowspan="2">الحضور</th><th rowspan="2">الغياب</th><th rowspan="2">التأخير</th>';
+    // أعمدة الإحصائيات حسب الاختيار
+    if (showColumnPresent) html += '<th rowspan="2">الحضور</th>';
+    if (showColumnAbsent) html += '<th rowspan="2">الغياب</th>';
+    if (showColumnLate) html += '<th rowspan="2">التأخير</th>';
+    
     html += '</tr></thead><tbody>';
     
     // صفوف الطلاب
@@ -355,10 +364,10 @@ function buildAttendanceTable(data) {
             html += `<td class="${cellClass}">${cellText}</td>`;
         });
         
-        // الإحصائيات
-        html += `<td class="cell-present">${student.total_present || 0}</td>`;
-        html += `<td class="cell-absent">${student.total_absent || 0}</td>`;
-        html += `<td class="cell-late">${student.total_late || 0}</td>`;
+        // الإحصائيات - فقط الأعمدة المفعلة
+        if (showColumnPresent) html += `<td class="cell-present">${student.total_present || 0}</td>`;
+        if (showColumnAbsent) html += `<td class="cell-absent">${student.total_absent || 0}</td>`;
+        if (showColumnLate) html += `<td class="cell-late">${student.total_late || 0}</td>`;
         html += '</tr>';
     });
     
@@ -369,6 +378,11 @@ function buildAttendanceTable(data) {
 // بناء الإحصائيات
 function buildStatistics(data) {
     const stats = document.getElementById('statistics');
+    
+    // خيارات عرض الإحصائيات
+    const showColumnPresent = document.getElementById('showColumnPresent').checked;
+    const showColumnAbsent = document.getElementById('showColumnAbsent').checked;
+    const showColumnLate = document.getElementById('showColumnLate').checked;
     
     console.log('Building statistics for:', data.students); // للتأكد
     
@@ -390,20 +404,36 @@ function buildStatistics(data) {
     
     console.log('Totals:', {totalPresent, totalAbsent, totalLate});
     
-    stats.innerHTML = `
-        <div class="stat-box present">
-            <span class="number">${totalPresent}</span>
-            <span class="label">إجمالي الحضور</span>
-        </div>
-        <div class="stat-box absent">
-            <span class="number">${totalAbsent}</span>
-            <span class="label">إجمالي الغياب</span>
-        </div>
-        <div class="stat-box late">
-            <span class="number">${totalLate}</span>
-            <span class="label">إجمالي التأخير</span>
-        </div>
-    `;
+    let html = '';
+    
+    if (showColumnPresent) {
+        html += `
+            <div class="stat-box present">
+                <span class="number">${totalPresent}</span>
+                <span class="label">إجمالي الحضور</span>
+            </div>
+        `;
+    }
+    
+    if (showColumnAbsent) {
+        html += `
+            <div class="stat-box absent">
+                <span class="number">${totalAbsent}</span>
+                <span class="label">إجمالي الغياب</span>
+            </div>
+        `;
+    }
+    
+    if (showColumnLate) {
+        html += `
+            <div class="stat-box late">
+                <span class="number">${totalLate}</span>
+                <span class="label">إجمالي التأخير</span>
+            </div>
+        `;
+    }
+    
+    stats.innerHTML = html;
 }
 
 // طباعة التقرير
