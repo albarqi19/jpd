@@ -1150,3 +1150,318 @@ function logout() {
     }
     window.location.href = 'index.html';
 }
+
+// ==============================================
+// Send Messages Tab Functions
+// ==============================================
+
+// متغيرات عامة
+let allStudents = [];
+let filteredStudents = [];
+let selectedStudents = [];
+
+// تحميل قائمة الطلاب
+async function loadStudentsList() {
+    try {
+        console.log('جاري تحميل قائمة الطلاب...');
+        
+        const response = await fetch(`${API_URL}/api/students/all`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('فشل تحميل قائمة الطلاب');
+        }
+        
+        const data = await response.json();
+        allStudents = data.students || [];
+        filteredStudents = [...allStudents];
+        
+        console.log(`تم تحميل ${allStudents.length} طالب`);
+        displayStudentsList();
+        
+    } catch (error) {
+        console.error('خطأ في تحميل قائمة الطلاب:', error);
+        document.getElementById('studentsListContainer').innerHTML = `
+            <div class="text-center text-danger py-4">
+                <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
+                <p class="mt-2">خطأ في تحميل قائمة الطلاب</p>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadStudentsList()">
+                    <i class="bi bi-arrow-clockwise"></i> إعادة المحاولة
+                </button>
+            </div>
+        `;
+    }
+}
+
+// عرض قائمة الطلاب
+function displayStudentsList() {
+    const container = document.getElementById('studentsListContainer');
+    
+    if (filteredStudents.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                <p class="mt-2">لا توجد نتائج</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    filteredStudents.forEach(student => {
+        const isSelected = selectedStudents.some(s => s.id === student.id);
+        const absenceDays = student.absence_days || 0;
+        
+        // تحديد لون badge الغياب
+        let absenceClass = 'absence-low';
+        if (absenceDays >= 10) absenceClass = 'absence-high';
+        else if (absenceDays >= 5) absenceClass = 'absence-medium';
+        
+        html += `
+            <div class="student-item ${isSelected ? 'selected' : ''}" onclick="toggleStudent(${student.id})">
+                <div class="d-flex align-items-center gap-3">
+                    <input type="checkbox" class="form-check-input" 
+                           ${isSelected ? 'checked' : ''} 
+                           onclick="event.stopPropagation(); toggleStudent(${student.id})">
+                    
+                    <div class="student-info">
+                        <div class="student-name">${student.name}</div>
+                        <div class="student-details">
+                            <i class="bi bi-card-text"></i> ${student.national_id || 'غير محدد'} |
+                            <i class="bi bi-book"></i> ${student.grade || 'غير محدد'} - ${student.class_name || 'غير محدد'}
+                            ${student.parent_phone ? `| <i class="bi bi-phone"></i> ${student.parent_phone}` : ''}
+                        </div>
+                    </div>
+                    
+                    ${absenceDays > 0 ? `
+                        <span class="absence-badge ${absenceClass}">
+                            <i class="bi bi-calendar-x"></i> ${absenceDays} يوم غياب
+                        </span>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    updateSelectedCount();
+}
+
+// تبديل تحديد طالب
+function toggleStudent(studentId) {
+    const student = allStudents.find(s => s.id === studentId);
+    if (!student) return;
+    
+    const index = selectedStudents.findIndex(s => s.id === studentId);
+    if (index > -1) {
+        selectedStudents.splice(index, 1);
+    } else {
+        selectedStudents.push(student);
+    }
+    
+    displayStudentsList();
+    updateMessagePreview();
+}
+
+// تحديد جميع الطلاب
+function selectAllStudents() {
+    selectedStudents = [...filteredStudents];
+    displayStudentsList();
+    updateMessagePreview();
+}
+
+// إلغاء تحديد جميع الطلاب
+function clearAllStudents() {
+    selectedStudents = [];
+    displayStudentsList();
+    updateMessagePreview();
+}
+
+// تحديث عداد الطلاب المحددين
+function updateSelectedCount() {
+    document.getElementById('selectedCount').textContent = selectedStudents.length;
+    document.getElementById('sendCount').textContent = selectedStudents.length;
+}
+
+// البحث عن طلاب
+function searchStudents() {
+    const searchTerm = document.getElementById('studentSearch').value.trim().toLowerCase();
+    
+    if (!searchTerm) {
+        filteredStudents = [...allStudents];
+    } else {
+        filteredStudents = allStudents.filter(student => 
+            student.name.toLowerCase().includes(searchTerm) ||
+            (student.national_id && student.national_id.includes(searchTerm))
+        );
+    }
+    
+    displayStudentsList();
+}
+
+// تصفية الطلاب حسب الغياب
+async function filterStudentsByAbsence() {
+    const days = document.getElementById('absenceFilter').value;
+    
+    if (!days) {
+        filteredStudents = [...allStudents];
+        displayStudentsList();
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        console.log(`جاري تحميل الطلاب الغائبين ${days} يوم فأكثر...`);
+        
+        const response = await fetch(`${API_URL}/api/students/absent?days=${days}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('فشل تحميل الطلاب الغائبين');
+        }
+        
+        const data = await response.json();
+        filteredStudents = data.students || [];
+        
+        console.log(`تم العثور على ${filteredStudents.length} طالب غائب`);
+        displayStudentsList();
+        
+        showNotification(`تم العثور على ${filteredStudents.length} طالب غائب ${days} يوم فأكثر`, 'info');
+        
+    } catch (error) {
+        console.error('خطأ في تصفية الطلاب:', error);
+        showNotification('خطأ في تصفية الطلاب: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// تحديث معاينة الرسالة
+function updateMessagePreview() {
+    const messageText = document.getElementById('messageText').value;
+    const previewDiv = document.getElementById('messagePreview');
+    const previewTextDiv = document.getElementById('previewText');
+    
+    if (!messageText || selectedStudents.length === 0) {
+        previewDiv.style.display = 'none';
+        return;
+    }
+    
+    // معاينة الرسالة بأول طالب محدد
+    const firstStudent = selectedStudents[0];
+    let preview = messageText
+        .replace(/{الاسم}/g, firstStudent.name)
+        .replace(/{الصف}/g, firstStudent.grade || 'غير محدد')
+        .replace(/{الفصل}/g, firstStudent.class_name || 'غير محدد')
+        .replace(/{ايام_الغياب}/g, firstStudent.absence_days || '0');
+    
+    previewTextDiv.innerHTML = preview.replace(/\n/g, '<br>');
+    previewDiv.style.display = 'block';
+}
+
+// إرسال الرسائل الجماعية
+async function sendBulkMessages() {
+    const messageText = document.getElementById('messageText').value.trim();
+    
+    // التحقق من الرسالة
+    if (!messageText) {
+        showNotification('الرجاء كتابة نص الرسالة', 'warning');
+        return;
+    }
+    
+    // التحقق من الطلاب المحددين
+    if (selectedStudents.length === 0) {
+        showNotification('الرجاء اختيار طالب واحد على الأقل', 'warning');
+        return;
+    }
+    
+    // تأكيد الإرسال
+    if (!confirm(`هل أنت متأكد من إرسال الرسالة إلى ${selectedStudents.length} طالب؟`)) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        console.log(`جاري إرسال رسائل إلى ${selectedStudents.length} طالب...`);
+        
+        // إعداد بيانات الإرسال
+        const messages = selectedStudents.map(student => {
+            let personalizedMessage = messageText
+                .replace(/{الاسم}/g, student.name)
+                .replace(/{الصف}/g, student.grade || 'غير محدد')
+                .replace(/{الفصل}/g, student.class_name || 'غير محدد')
+                .replace(/{ايام_الغياب}/g, student.absence_days || '0');
+            
+            return {
+                student_id: student.id,
+                phone: student.parent_phone,
+                message: personalizedMessage,
+                student_name: student.name
+            };
+        });
+        
+        const response = await fetch(`${API_URL}/api/whatsapp/send-bulk`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            },
+            body: JSON.stringify({
+                messages: messages
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('فشل إرسال الرسائل');
+        }
+        
+        const data = await response.json();
+        
+        showNotification(`تم إضافة ${data.queued || selectedStudents.length} رسالة إلى قائمة الانتظار`, 'success');
+        
+        // إعادة تعيين النموذج
+        document.getElementById('messageText').value = '';
+        clearAllStudents();
+        updateMessagePreview();
+        
+        // التحديث التلقائي للقائمة
+        await loadQueue();
+        await loadStatistics();
+        
+        // الانتقال إلى تبويب قائمة الانتظار
+        const queueTab = document.getElementById('queue-tab');
+        if (queueTab) {
+            queueTab.click();
+        }
+        
+    } catch (error) {
+        console.error('خطأ في إرسال الرسائل:', error);
+        showNotification('خطأ في إرسال الرسائل: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// إضافة مستمع لتحديث المعاينة عند كتابة الرسالة
+document.addEventListener('DOMContentLoaded', function() {
+    const messageTextarea = document.getElementById('messageText');
+    if (messageTextarea) {
+        messageTextarea.addEventListener('input', updateMessagePreview);
+    }
+    
+    // تحميل قائمة الطلاب عند فتح التبويب
+    const sendMessagesTab = document.getElementById('send-messages-tab');
+    if (sendMessagesTab) {
+        sendMessagesTab.addEventListener('shown.bs.tab', function() {
+            if (allStudents.length === 0) {
+                loadStudentsList();
+            }
+        });
+    }
+});

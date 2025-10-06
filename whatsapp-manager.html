@@ -98,6 +98,75 @@
         
         .queue-item.completed {
             border-color: #28a745;
+        }
+        
+        /* Student Selection Styles */
+        .student-item {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #fff;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .student-item:hover {
+            background: #f8f9fa;
+            border-color: #007bff;
+            transform: translateX(-3px);
+        }
+        
+        .student-item.selected {
+            background: #e7f3ff;
+            border-color: #007bff;
+            border-width: 2px;
+        }
+        
+        .student-item .form-check-input {
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+        }
+        
+        .student-info {
+            flex-grow: 1;
+        }
+        
+        .student-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1rem;
+        }
+        
+        .student-details {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        
+        .absence-badge {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        
+        .absence-low {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .absence-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .absence-high {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .queue-item.completed {
+            border-color: #28a745;
             background: #f8fff9;
         }
         
@@ -246,6 +315,11 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates" role="tab">
                     <i class="bi bi-file-text me-2"></i>قوالب الرسائل
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="send-messages-tab" data-bs-toggle="tab" data-bs-target="#send-messages" role="tab">
+                    <i class="bi bi-send me-2"></i>إرسال الرسائل
                 </button>
             </li>
         </ul>
@@ -414,6 +488,114 @@
                     <div class="card-body">
                         <div id="templatesContainer">
                             <!-- سيتم ملؤها بـ JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Send Messages Tab -->
+            <div class="tab-pane fade" id="send-messages" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-send me-2"></i>إرسال رسائل للطلاب</h6>
+                    </div>
+                    <div class="card-body">
+                        <!-- Filters Section -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-funnel me-1"></i>تصفية الطلاب حسب الغياب
+                                </label>
+                                <select class="form-select" id="absenceFilter" onchange="filterStudentsByAbsence()">
+                                    <option value="">جميع الطلاب</option>
+                                    <option value="1">الغائبين يوم واحد فأكثر</option>
+                                    <option value="2">الغائبين يومين فأكثر</option>
+                                    <option value="3">الغائبين 3 أيام فأكثر</option>
+                                    <option value="5">الغائبين 5 أيام فأكثر</option>
+                                    <option value="7">الغائبين أسبوع فأكثر</option>
+                                    <option value="10">الغائبين 10 أيام فأكثر</option>
+                                    <option value="15">الغائبين 15 يوم فأكثر</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-search me-1"></i>البحث عن طالب
+                                </label>
+                                <input type="text" class="form-control" id="studentSearch" 
+                                       placeholder="ابحث بالاسم أو رقم الهوية..." 
+                                       onkeyup="searchStudents()">
+                            </div>
+                        </div>
+
+                        <!-- Students Selection -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label fw-bold mb-0">
+                                        <i class="bi bi-people me-1"></i>اختيار الطلاب
+                                        <span class="badge bg-primary ms-2" id="selectedCount">0</span>
+                                    </label>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="selectAllStudents()">
+                                            <i class="bi bi-check-all"></i> تحديد الكل
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="clearAllStudents()">
+                                            <i class="bi bi-x-circle"></i> إلغاء التحديد
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Students List Container -->
+                                <div class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+                                    <div id="studentsListContainer">
+                                        <div class="text-center text-muted py-5">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">جاري التحميل...</span>
+                                            </div>
+                                            <p class="mt-2">جاري تحميل قائمة الطلاب...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Message Section -->
+                        <div class="row">
+                            <div class="col-12">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-chat-text me-1"></i>نص الرسالة
+                                </label>
+                                
+                                <!-- Variables Helper -->
+                                <div class="alert alert-info mb-2">
+                                    <small>
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        <strong>المتغيرات المتاحة:</strong>
+                                        <span class="badge bg-light text-dark mx-1">{الاسم}</span>
+                                        <span class="badge bg-light text-dark mx-1">{الصف}</span>
+                                        <span class="badge bg-light text-dark mx-1">{الفصل}</span>
+                                        <span class="badge bg-light text-dark mx-1">{ايام_الغياب}</span>
+                                    </small>
+                                </div>
+
+                                <textarea class="form-control mb-3" id="messageText" rows="6" 
+                                          placeholder="اكتب رسالتك هنا... مثال:&#10;&#10;عزيزي ولي أمر الطالب/ة {الاسم}&#10;نود إعلامكم بأن الطالب/ة غائب منذ {ايام_الغياب} يوم في الصف {الصف} - الفصل {الفصل}&#10;&#10;إدارة المدرسة"></textarea>
+
+                                <!-- Preview -->
+                                <div id="messagePreview" class="alert alert-secondary" style="display: none;">
+                                    <strong><i class="bi bi-eye me-1"></i>معاينة الرسالة:</strong>
+                                    <div id="previewText" class="mt-2 p-2 bg-white rounded"></div>
+                                </div>
+
+                                <!-- Send Button -->
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-success btn-lg" onclick="sendBulkMessages()">
+                                        <i class="bi bi-send-fill me-2"></i>
+                                        إرسال الرسائل للطلاب المحددين
+                                        <span id="sendCount" class="badge bg-light text-dark ms-2">0</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
