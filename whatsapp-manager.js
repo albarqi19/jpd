@@ -1191,12 +1191,15 @@ async function loadStudentsList() {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
             }
         });
         
         if (!response.ok) {
-            throw new Error('فشل تحميل قائمة الطلاب');
+            const errorText = await response.text();
+            console.error('API Error:', response.status, errorText);
+            throw new Error(`فشل تحميل قائمة الطلاب: ${response.status} - ${errorText.substring(0, 100)}`);
         }
         
         const data = await response.json();
@@ -1208,10 +1211,12 @@ async function loadStudentsList() {
         
     } catch (error) {
         console.error('خطأ في تحميل قائمة الطلاب:', error);
+        const errorMessage = error.message || 'خطأ غير معروف';
         document.getElementById('studentsListContainer').innerHTML = `
             <div class="text-center text-danger py-4">
                 <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
                 <p class="mt-2">خطأ في تحميل قائمة الطلاب</p>
+                <small class="text-muted d-block mb-2">${errorMessage}</small>
                 <button class="btn btn-sm btn-outline-primary" onclick="loadStudentsList()">
                     <i class="bi bi-arrow-clockwise"></i> إعادة المحاولة
                 </button>
@@ -1344,7 +1349,8 @@ async function filterStudentsByAbsence() {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
             }
         });
         
@@ -1437,7 +1443,8 @@ async function sendBulkMessages() {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'ngrok-skip-browser-warning': 'true'
             },
             body: JSON.stringify({
                 messages: messages
