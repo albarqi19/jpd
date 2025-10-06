@@ -1,6 +1,9 @@
 // WhatsApp Manager JavaScript
 // ===========================
 
+// متغير API URL
+const API_URL = 'https://roseanne-nonrestricting-arnoldo.ngrok-free.dev/api';
+
 // متغيرات عامة
 let currentUser = null;
 let whatsappQueue = [];
@@ -177,6 +180,7 @@ function displayQueue() {
     whatsappQueue.forEach(item => {
         const statusClass = getStatusClass(item.status);
         const statusText = getStatusText(item.status);
+        const statusColor = getStatusColor(item.status);
         
         html += `
             <div class="queue-item ${statusClass}">
@@ -575,6 +579,17 @@ function getStatusText(status) {
     }
 }
 
+function getStatusColor(status) {
+    switch (status) {
+        case 'pending': return 'warning';
+        case 'processing': return 'info';
+        case 'sent': return 'success';
+        case 'delivered': return 'success';
+        case 'failed': return 'danger';
+        default: return 'secondary';
+    }
+}
+
 function getTemplateTypeText(type) {
     switch (type) {
         case 'absence': return 'إشعار غياب';
@@ -597,7 +612,13 @@ function formatDateTime(dateString) {
 
 function showLoading(show) {
     const overlay = document.getElementById('loadingOverlay');
-    overlay.style.display = show ? 'flex' : 'none';
+    if (overlay) {
+        overlay.style.display = show ? 'flex' : 'none';
+    }
+}
+
+function showNotification(message, type = 'info') {
+    showToast(message, type);
 }
 
 function showToast(message, type = 'info') {
@@ -613,6 +634,7 @@ function showToast(message, type = 'info') {
             iconClass = 'bi-check-circle';
             break;
         case 'error':
+        case 'danger':
             bgClass = 'bg-danger';
             iconClass = 'bi-exclamation-circle';
             break;
