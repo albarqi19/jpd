@@ -44,8 +44,21 @@ function loadClasses() {
         return;
     }
     
-    // الفصول الافتراضية
-    const classes = ['1', '2', '3', '4', '5'];
+    // الفصول حسب الصف
+    let classes = [];
+    if (grade === 'الصف الأول') {
+        classes = ['1', '2', '3', '4', '5'];
+    } else if (grade === 'الصف الثاني') {
+        classes = ['1', '2', '3', '4'];
+    } else if (grade === 'الصف الثالث') {
+        classes = ['1', '2', '3', '4'];
+    } else if (grade === 'الصف الرابع') {
+        classes = ['1', '2', '3', '4', '5', '6'];
+    } else if (grade === 'الصف الخامس') {
+        classes = ['1', '2', '3', '4', '5'];
+    } else if (grade === 'الصف السادس') {
+        classes = ['1', '2', '3', '4'];
+    }
     
     classSelect.innerHTML = '<option value="">اختر الفصل</option>';
     classes.forEach(cls => {
@@ -56,9 +69,12 @@ function loadClasses() {
 // تحميل جميع الطلاب
 async function loadAllStudents() {
     try {
+        const token = localStorage.getItem('auth_token');
         const response = await fetch(`${API_URL}/admin/students/all`, {
             headers: {
-                'ngrok-skip-browser-warning': 'true'
+                'ngrok-skip-browser-warning': 'true',
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
             }
         });
         
@@ -205,9 +221,12 @@ async function fetchAttendanceData(dateRange) {
     
     url += `&start_date=${dateRange.start}&end_date=${dateRange.end}`;
     
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(url, {
         headers: {
-            'ngrok-skip-browser-warning': 'true'
+            'ngrok-skip-browser-warning': 'true',
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
         }
     });
     
@@ -487,8 +506,18 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-// تحميل البيانات عند فتح الصفحة
+// تحميل البيانات عند فتح الص٤حة
 document.addEventListener('DOMContentLoaded', function() {
+    // التحقق من وجود token
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+        showToast('يجب تسجيل الدخول أولاً', 'error');
+        setTimeout(() => {
+            window.close();
+        }, 2000);
+        return;
+    }
+    
     // تعيين التاريخ الافتراضي للفترة المخصصة
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('endDate').value = today;
@@ -496,4 +525,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
     document.getElementById('startDate').value = weekAgo.toISOString().split('T')[0];
+    
+    // الاستماع لرسائل postMessage
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'USER_DATA' && event.data.token) {
+            localStorage.setItem('auth_token', event.data.token);
+        }
+    });
 });
