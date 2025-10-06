@@ -522,6 +522,9 @@ function resetFilters() {
     document.getElementById('showPresent').checked = true;
     document.getElementById('showAbsent').checked = true;
     document.getElementById('showLate').checked = true;
+    document.getElementById('showColumnPresent').checked = true;
+    document.getElementById('showColumnAbsent').checked = true;
+    document.getElementById('showColumnLate').checked = true;
     
     selectReportType('class');
 }
