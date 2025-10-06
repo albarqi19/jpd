@@ -242,6 +242,8 @@ async function fetchAttendanceData(dateRange) {
 function buildReport(data, dateRange) {
     reportData = data;
     
+    console.log('Report Data:', data); // للتأكد من البيانات
+    
     // تحديث معلومات التقرير
     updateReportHeader(dateRange);
     
@@ -312,11 +314,15 @@ function buildAttendanceTable(data) {
         
         // الحضور لكل يوم
         dates.forEach(date => {
-            const record = student.attendance.find(a => a.date === date);
+            const record = student.attendance.find(a => {
+                // التأكد من تطابق التاريخ (قد يكون بصيغة datetime)
+                const recordDate = a.date ? a.date.split(' ')[0] : '';
+                return recordDate === date || a.date === date;
+            });
             let cellClass = '';
             let cellText = '-';
             
-            if (record) {
+            if (record && record.status) {
                 if (record.status === 'present') {
                     cellClass = showPresent ? 'cell-present' : '';
                     cellText = showPresent ? '✓' : '-';
