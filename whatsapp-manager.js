@@ -1482,11 +1482,197 @@ async function sendBulkMessages() {
     }
 }
 
+// ==============================================
+// Custom Message Tab Functions
+// ==============================================
+
+// تحديث عداد الأحرف والرسائل
+function updateCustomMessageCounter() {
+    const messageText = document.getElementById('customMessageText').value;
+    const charCount = messageText.length;
+    const smsCount = Math.ceil(charCount / 160) || 0;
+    
+    document.getElementById('customCharCount').textContent = charCount;
+    document.getElementById('customSmsCount').textContent = smsCount;
+}
+
+// تحميل قالب إلى الرسالة المخصصة
+function loadTemplateToCustomMessage() {
+    const templateId = document.getElementById('customTemplateSelect').value;
+    if (!templateId) {
+        return;
+    }
+    
+    const template = messageTemplates.find(t => t.id == templateId);
+    if (template) {
+        document.getElementById('customMessageText').value = template.content;
+        updateCustomMessageCounter();
+    }
+}
+
+// تحميل القوالب في القائمة المنسدلة
+function loadTemplatesDropdown() {
+    const select = document.getElementById('customTemplateSelect');
+    if (!select) return;
+    
+    let options = '<option value="">-- اختر قالب --</option>';
+    messageTemplates.forEach(template => {
+        options += `<option value="${template.id}">${template.name}</option>`;
+    });
+    select.innerHTML = options;
+}
+
+// إرسال رسالة مخصصة
+async function sendCustomMessage() {
+    const phoneNumber = document.getElementById('customPhoneNumber').value.trim();
+    const recipientName = document.getElementById('customRecipientName').value.trim();
+    const messageText = document.getElementById('customMessageText').value.trim();
+    
+    // التحقق من البيانات
+    if (!phoneNumber) {
+        showNotification('الرجاء إدخال رقم الهاتف', 'warning');
+        document.getElementById('customPhoneNumber').focus();
+        return;
+    }
+    
+    if (!messageText) {
+        showNotification('الرجاء كتابة نص الرسالة', 'warning');
+        document.getElementById('customMessageText').focus();
+        return;
+    }
+    
+    // التحقق من صحة الرقم (يبدأ بـ 966 ويتكون من 12 رقم)
+    const phoneRegex = /^966\d{9}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+        showNotification('رقم الهاتف غير صحيح. يجب أن يبدأ بـ 966 ويتكون من 12 رقم', 'warning');
+        document.getElementById('customPhoneNumber').focus();
+        return;
+    }
+    
+    // استبدال المتغيرات
+    let finalMessage = messageText;
+    if (recipientName) {
+        finalMessage = finalMessage.replace(/{الاسم}/g, recipientName);
+    }
+    
+    // تأكيد الإرسال
+    if (!confirm(`هل أنت متأكد من إرسال الرسالة إلى ${phoneNumber}؟`)) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        console.log('جاري إرسال رسالة مخصصة...');
+        
+        const response = await fetch(`${API_URL}/admin/whatsapp/send-custom`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify({
+                phone: phoneNumber,
+                message: finalMessage,
+                recipient_name: recipientName || 'مستلم'
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`فشل إرسال الرسالة: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        showNotification('تم إضافة الرسالة إلى قائمة الانتظار بنجاح', 'success');
+        
+        // مسح النموذج
+        document.getElementById('customPhoneNumber').value = '';
+        document.getElementById('customRecipientName').value = '';
+        document.getElementById('customMessageText').value = '';
+        document.getElementById('customTemplateSelect').value = '';
+        updateCustomMessageCounter();
+        
+        // تحديث قائمة الانتظار
+        await loadQueue();
+        await loadStatistics();
+        
+        // عرض الرسائل الأخيرة
+        loadRecentCustomMessages();
+        
+    } catch (error) {
+        console.error('خطأ في إرسال الرسالة:', error);
+        showNotification('خطأ في إرسال الرسالة: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// تحميل الرسائل المخصصة الأخيرة
+async function loadRecentCustomMessages() {
+    try {
+        const response = await fetch(`${API_URL}/admin/whatsapp/custom-messages`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            }
+        });
+        
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const messages = data.messages || [];
+        
+        const container = document.getElementById('recentCustomMessages');
+        if (messages.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center py-3">لا توجد رسائل مخصصة</p>';
+            return;
+        }
+        
+        let html = '<div class="list-group">';
+        messages.forEach(msg => {
+            const statusClass = getStatusClass(msg.status);
+            const statusText = getStatusText(msg.status);
+            const statusColor = getStatusColor(msg.status);
+            
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">${msg.recipient_name || 'مستلم'} - ${msg.phone_number}</h6>
+                            <p class="mb-1 text-muted small">${msg.message_content.substring(0, 100)}${msg.message_content.length > 100 ? '...' : ''}</p>
+                            <small class="text-muted">
+                                <i class="bi bi-clock"></i> ${formatDateTime(msg.created_at)}
+                            </small>
+                        </div>
+                        <span class="badge bg-${statusColor}">${statusText}</span>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('خطأ في تحميل الرسائل الأخيرة:', error);
+    }
+}
+
 // إضافة مستمع لتحديث المعاينة عند كتابة الرسالة
 document.addEventListener('DOMContentLoaded', function() {
     const messageTextarea = document.getElementById('messageText');
     if (messageTextarea) {
         messageTextarea.addEventListener('input', updateMessagePreview);
+    }
+    
+    // عداد الأحرف للرسالة المخصصة
+    const customMessageTextarea = document.getElementById('customMessageText');
+    if (customMessageTextarea) {
+        customMessageTextarea.addEventListener('input', updateCustomMessageCounter);
     }
     
     // تحميل قائمة الطلاب عند فتح التبويب
@@ -1496,6 +1682,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (allStudents.length === 0) {
                 loadStudentsList();
             }
+        });
+    }
+    
+    // تحميل القوالب والرسائل عند فتح تبويب الرسائل المخصصة
+    const customMessageTab = document.getElementById('custom-message-tab');
+    if (customMessageTab) {
+        customMessageTab.addEventListener('shown.bs.tab', function() {
+            loadTemplatesDropdown();
+            loadRecentCustomMessages();
         });
     }
 });

@@ -322,6 +322,11 @@
                     <i class="bi bi-send me-2"></i>إرسال الرسائل
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="custom-message-tab" data-bs-toggle="tab" data-bs-target="#custom-message" role="tab">
+                    <i class="bi bi-chat-dots me-2"></i>رسائل
+                </button>
+            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -594,6 +599,99 @@
                                         إرسال الرسائل للطلاب المحددين
                                         <span id="sendCount" class="badge bg-light text-dark ms-2">0</span>
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Message Tab -->
+            <div class="tab-pane fade" id="custom-message" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-chat-dots me-2"></i>إرسال رسالة مخصصة</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="bi bi-phone me-1"></i>رقم الهاتف
+                                    </label>
+                                    <input type="text" class="form-control" id="customPhoneNumber" 
+                                           placeholder="966xxxxxxxxx" 
+                                           dir="ltr"
+                                           style="text-align: left;">
+                                    <small class="text-muted">مثال: 966530996778 (مع رمز الدولة بدون +)</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="bi bi-person me-1"></i>اسم المستلم (اختياري)
+                                    </label>
+                                    <input type="text" class="form-control" id="customRecipientName" 
+                                           placeholder="اسم المستلم">
+                                    <small class="text-muted">سيستخدم في متغير {الاسم} إذا وجد</small>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="bi bi-file-text me-1"></i>استخدام قالب (اختياري)
+                                    </label>
+                                    <select class="form-select" id="customTemplateSelect" onchange="loadTemplateToCustomMessage()">
+                                        <option value="">-- اختر قالب --</option>
+                                    </select>
+                                </div>
+
+                                <div class="alert alert-info mb-3">
+                                    <small>
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        <strong>المتغيرات المتاحة:</strong>
+                                        <span class="badge bg-light text-dark mx-1">{الاسم}</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-chat-text me-1"></i>نص الرسالة
+                                </label>
+                                <textarea class="form-control mb-3" id="customMessageText" rows="8" 
+                                          placeholder="اكتب رسالتك هنا...&#10;&#10;يمكنك استخدام {الاسم} إذا أدخلت اسم المستلم أعلاه"></textarea>
+
+                                <!-- Character Counter -->
+                                <div class="d-flex justify-content-between mb-3">
+                                    <small class="text-muted">
+                                        <i class="bi bi-text-paragraph"></i> عدد الأحرف: <span id="customCharCount">0</span>
+                                    </small>
+                                    <small class="text-muted">
+                                        <i class="bi bi-chat-square-text"></i> عدد الرسائل: <span id="customSmsCount">0</span>
+                                    </small>
+                                </div>
+
+                                <!-- Send Button -->
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary btn-lg" onclick="sendCustomMessage()">
+                                        <i class="bi bi-send-fill me-2"></i>
+                                        إرسال الرسالة
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Custom Messages -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <h6 class="border-bottom pb-2">
+                                    <i class="bi bi-clock-history me-2"></i>الرسائل المخصصة الأخيرة
+                                </h6>
+                                <div id="recentCustomMessages">
+                                    <p class="text-muted text-center py-3">لا توجد رسائل مخصصة</p>
                                 </div>
                             </div>
                         </div>
