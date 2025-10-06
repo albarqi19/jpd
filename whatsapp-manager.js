@@ -1187,9 +1187,11 @@ async function loadStudentsList() {
     try {
         console.log('جاري تحميل قائمة الطلاب...');
         
-        const response = await fetch(`${API_URL}/api/students/all`, {
+        const response = await fetch(`${API_URL}/admin/students/all`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
         });
         
@@ -1338,9 +1340,11 @@ async function filterStudentsByAbsence() {
         showLoading(true);
         console.log(`جاري تحميل الطلاب الغائبين ${days} يوم فأكثر...`);
         
-        const response = await fetch(`${API_URL}/api/students/absent?days=${days}`, {
+        const response = await fetch(`${API_URL}/admin/students/absent?days=${days}`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
         });
         
@@ -1428,10 +1432,11 @@ async function sendBulkMessages() {
             };
         });
         
-        const response = await fetch(`${API_URL}/api/whatsapp/send-bulk`, {
+        const response = await fetch(`${API_URL}/admin/whatsapp/send-bulk`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
             },
             body: JSON.stringify({
