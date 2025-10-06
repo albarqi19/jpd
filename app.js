@@ -6418,6 +6418,23 @@ function openWhatsappManager() {
   }, 1000);
 }
 
+// فتح صفحة كشف الغياب
+function openAttendanceReport() {
+  // فتح النافذة في تبويب جديد
+  const reportWindow = window.open('attendance-report.html', '_blank');
+  
+  // تمرير بيانات المستخدم للنافذة الجديدة
+  setTimeout(() => {
+    if (reportWindow && !reportWindow.closed) {
+      // تأكد من وجود التوكن في localStorage للنافذة الجديدة
+      reportWindow.postMessage({
+        type: 'USER_DATA',
+        token: localStorage.getItem('auth_token'),
+      }, '*');
+    }
+  }, 1000);
+}
+
 // ============ وظائف إدارة التأخير ============
 
 // جلب محتوى صفحة إدارة التأخير
