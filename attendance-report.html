@@ -381,23 +381,47 @@
             <!-- خيارات العرض -->
             <div class="filter-group">
                 <label>خيارات العرض:</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="showPresent" checked>
-                    <label class="form-check-label" for="showPresent">
-                        عرض الحضور
-                    </label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="showAbsent" checked>
-                    <label class="form-check-label" for="showAbsent">
-                        عرض الغياب
-                    </label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="showLate" checked>
-                    <label class="form-check-label" for="showLate">
-                        عرض التأخير
-                    </label>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showPresent" checked>
+                            <label class="form-check-label" for="showPresent">
+                                عرض الحضور في الجدول
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showAbsent" checked>
+                            <label class="form-check-label" for="showAbsent">
+                                عرض الغياب في الجدول
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showLate" checked>
+                            <label class="form-check-label" for="showLate">
+                                عرض التأخير في الجدول
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showColumnPresent" checked>
+                            <label class="form-check-label" for="showColumnPresent">
+                                عمود إجمالي الحضور
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showColumnAbsent" checked>
+                            <label class="form-check-label" for="showColumnAbsent">
+                                عمود إجمالي الغياب
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showColumnLate" checked>
+                            <label class="form-check-label" for="showColumnLate">
+                                عمود إجمالي التأخير
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
 
