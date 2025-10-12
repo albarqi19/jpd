@@ -2001,3 +2001,102 @@ small, .small {
   background-color: rgba(var(--color-error-rgb), 0.1);
   color: var(--color-error);
 }
+
+/* إشعار الواجهة الجديدة */
+.notification-banner {
+  position: fixed;
+  bottom: -100%;
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  border-top: 3px solid #fbbf24;
+}
+
+.notification-banner.show {
+  bottom: 0;
+}
+
+.notification-content {
+  padding: 20px;
+  max-width: 100%;
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.notification-body {
+  font-size: 14px;
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 4px;
+}
+
+.feature-list li {
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.notification-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-close-white {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* تحسينات للشاشات الصغيرة */
+@media (max-width: 768px) {
+  .notification-content {
+    padding: 16px;
+  }
+  
+  .notification-header {
+    font-size: 14px;
+  }
+  
+  .notification-body {
+    font-size: 13px;
+  }
+  
+  .feature-list {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  
+  .notification-actions {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .notification-content {
+    padding: 12px;
+  }
+  
+  .notification-header {
+    font-size: 13px;
+  }
+  
+  .notification-body {
+    font-size: 12px;
+  }
+}
