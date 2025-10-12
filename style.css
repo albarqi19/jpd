@@ -2100,3 +2100,62 @@ small, .small {
     font-size: 12px;
   }
 }
+
+/* تحسينات زر الواجهة الجديدة في هيدر الحصص */
+.card-header .btn-warning {
+  background: #059669;
+  border: 1px solid #059669;
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  box-shadow: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-header .btn-warning::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #fbbf24;
+  border-radius: 50%;
+  animation: aircraftBeacon 1.5s infinite;
+  box-shadow: 0 0 4px rgba(251, 191, 36, 0.5);
+}
+
+@keyframes aircraftBeacon {
+  0%, 50% {
+    opacity: 1;
+    background: #fbbf24;
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+  }
+  51%, 100% {
+    opacity: 0.2;
+    background: #92400e;
+    box-shadow: 0 0 2px rgba(251, 191, 36, 0.2);
+  }
+}
+
+.card-header .btn-warning:hover {
+  background: #047857;
+  border-color: #047857;
+  color: #ffffff;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+}
+
+@media (max-width: 576px) {
+  .card-header .btn-warning {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  
+  .card-header .btn-warning .bi {
+    font-size: 11px;
+  }
+}

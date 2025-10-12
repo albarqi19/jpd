@@ -198,9 +198,14 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0" id="cardTitle"><i class="bi bi-calendar-check me-2"></i>حصص اليوم</h5>
-                    <button class="btn btn-outline-secondary btn-sm" id="backToClassesBtn" style="display: none;" onclick="hideScheduleSection()">
-                        <i class="bi bi-arrow-left me-1"></i>العودة
-                    </button>
+                    <div class="d-flex gap-2">
+                        <a href="https://alraed.vercel.app/auth/teacher" target="_blank" class="btn btn-warning btn-sm" title="جرب الواجهة الجديدة">
+                            <i class="bi bi-stars me-1"></i>الواجهة الجديدة
+                        </a>
+                        <button class="btn btn-outline-secondary btn-sm" id="backToClassesBtn" style="display: none;" onclick="hideScheduleSection()">
+                            <i class="bi bi-arrow-left me-1"></i>العودة
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <!-- محتوى الحصص اليومية -->
